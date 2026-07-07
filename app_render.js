@@ -155,15 +155,52 @@ function semTrendSvg(tr){
 // 학년별 탐구 깊이 추이(성장 궤적)
 function growthSvg(rows){
   if(rows.length<2) return '';
-  const W=430,H=118,pl=34,pr=18,pt=16,pb=24;
-  const xs=i=>pl+(W-pl-pr)*i/(rows.length-1); const y=v=>pt+(H-pt-pb)*(1-v/5);
-  let s=`<svg viewBox="0 0 ${W} ${H}">`;
-  [['상',5],['중',2.5],['하',0]].forEach(([lab,v])=>s+=`<line x1="${pl}" y1="${y(v)}" x2="${W-pr}" y2="${y(v)}" stroke="#eef1f4"/><text x="${pl-6}" y="${y(v)+3}" font-size="10" fill="#9aa4b0" text-anchor="end">${lab}</text>`);
-  const d=rows.map((r,k)=>(k?'L':'M')+xs(k)+' '+y(r.avgDepth)).join(' ');
-  s+=`<path d="${d}" fill="none" stroke="#3b6ea5" stroke-width="2.4"/>`;
-  rows.forEach((r,k)=>s+=`<circle cx="${xs(k)}" cy="${y(r.avgDepth)}" r="3.6" fill="#3b6ea5"/><text x="${xs(k)}" y="${y(r.avgDepth)-8}" font-size="10.5" fill="#3b6ea5" font-weight="700" text-anchor="middle">${r.band}</text><text x="${xs(k)}" y="${H-7}" font-size="10" fill="#9aa4b0" text-anchor="middle">${r.grade}학년</text>`);
+  const W=440,H=168,pl=36,pr=20,pt=26,pb=30;
+  const maxK=Math.max(1,...rows.map(r=>r.kwTotal));
+  const xs=i=>pl+(W-pl-pr)*i/(rows.length-1); const y=v=>pt+(H-pt-pb)*(1-v/maxK);
+  const tierCol={3:'#2f6f4f',2:'#3b8f66',1:'#77b58f',0:'#c0c7cf'};
+  let s=`<svg viewBox="0 0 ${W} ${H}"><defs><linearGradient id="ggrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f8f5f" stop-opacity="0.42"/><stop offset="1" stop-color="#2f8f5f" stop-opacity="0.02"/></linearGradient></defs>`;
+  [0,0.5,1].forEach(f=>{const v=maxK*f;s+=`<line x1="${pl}" y1="${y(v)}" x2="${W-pr}" y2="${y(v)}" stroke="#eef1f4"/><text x="${pl-6}" y="${y(v)+3}" font-size="9" fill="#9aa4b0" text-anchor="end">${Math.round(v)}</text>`;});
+  const line=rows.map((r,k)=>xs(k)+' '+y(r.kwTotal));
+  s+=`<path d="M${pl} ${y(0)} L${line.join(' L')} L${xs(rows.length-1)} ${y(0)} Z" fill="url(#ggrad)"/>`;
+  s+=`<path d="M${line.join(' L')}" fill="none" stroke="#2f8f5f" stroke-width="3.2" stroke-linejoin="round"/>`;
+  rows.forEach((r,k)=>{const cy=y(r.kwTotal);
+    s+=`<circle cx="${xs(k)}" cy="${cy}" r="6" fill="#fff" stroke="#2f8f5f" stroke-width="3"/>`;
+    s+=`<text x="${xs(k)}" y="${cy-13}" font-size="13" font-weight="800" fill="#2f6f4f" text-anchor="middle">${r.kwTotal}</text>`;
+    s+=`<text x="${xs(k)}" y="${H-15}" font-size="10.5" font-weight="700" fill="#6b7684" text-anchor="middle">${r.grade}학년</text>`;
+    s+=`<rect x="${xs(k)-16}" y="${H-11}" width="32" height="12" rx="6" fill="${tierCol[r.maxTier]||'#c0c7cf'}"/><text x="${xs(k)}" y="${H-2}" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">${esc(r.band)}</text>`;
+  });
   return s+'</svg>';
 }
+// ── 차트 자동 해석(판단) + 산출 논리 ──
+function judgeGrowth(gt){
+  if(!gt||!gt.rows.length) return null;
+  if(!gt.multi) return {read:'아직 한 학년만 기재되어 성장 궤적 비교는 이릅니다. 상급 학년에서 같은 진로 주제를 이어가면 심화 흐름이 그려집니다.', logic:'세로축=자율·동아리·진로·세특에서 진로 핵심어가 등장한 횟수, 가로축=학년.'};
+  const f=gt.rows[0], l=gt.rows[gt.rows.length-1];
+  let read;
+  if(l.kwTotal>=f.kwTotal*1.2) read=`진로 핵심어가 ${f.grade}학년 ${f.kwTotal}회 → ${l.grade}학년 ${l.kwTotal}회로 늘며 학년이 오를수록 전공 탐구가 짙어졌습니다(우상향). 관심이 구체화·심화되는 바람직한 흐름입니다.`;
+  else if(l.kwTotal<=f.kwTotal*0.8) read=`진로 핵심어가 ${f.grade}학년 ${f.kwTotal}회 → ${l.grade}학년 ${l.kwTotal}회로 줄었습니다. 초반에 전공 탐구가 집중됐다가 이후 약해진 형태로, 상급 학년에서 같은 주제를 다시 이어가면 '지속성'이 강해집니다. (학년별 기재 분량 차이일 수도 있으니 원문도 함께 확인하세요.)`;
+  else read=`진로 핵심어 빈도가 ${f.kwTotal}→${l.kwTotal}회로 비슷하게 유지됩니다. 꾸준하지만 심화가 뚜렷하진 않으니 후속 탐구로 깊이를 더하면 좋습니다.`;
+  const bo=['하','중','상']; if(l.band!==f.band) read+=` 탐구 깊이는 ${f.band}→${l.band}로 ${bo.indexOf(l.band)>bo.indexOf(f.band)?'깊어졌':'낮아졌'}습니다.`;
+  return {read, logic:'세로축=진로 핵심어 등장 횟수(전공 몰입도), 점 아래 배지=탐구 깊이 상/중/하. 빈도가 오를수록 전공 탐구가 짙어진 것으로 봅니다.'};
+}
+function judgeRadar(radar){
+  if(!radar||!radar.length) return null;
+  const bn=[...radar].sort((a,b)=>b.norm-a.norm), top=bn[0], low=bn[bn.length-1];
+  const read = (top.norm-low.norm)<0.28
+    ? `다섯 역량이 비교적 고르게 나타나는 균형형입니다. 특정 축에 치우치지 않아 종합적으로 안정적입니다.`
+    : `${top.axis}이(가) 가장 두드러지고 ${low.axis}이(가) 상대적으로 약합니다. ${low.axis} 관련 활동·기록을 보완하면 오각형이 더 고르게 채워집니다.`;
+  return {read:`${read} (강한 축: ${bn.slice(0,2).map(a=>a.axis).join('·')} / 약한 축: ${low.axis})`, logic:'축 길이=이 학생 안에서의 상대 강도(축마다 측정 단위가 달라 절대 비교가 아닌 프로파일). 숫자는 실측 신호 수.'};
+}
+function judgeSunburst(sb){
+  if(!sb||!sb.total) return null;
+  const pct=c=>Math.round(c/sb.total*100);
+  const parts=sb.areas.map(a=>`${a.name} ${pct(a.chars)}%`).join(' · ');
+  const setuk=sb.areas.find(a=>a.name==='세특'); let topSub='';
+  if(setuk){const t=[...setuk.children].sort((x,y)=>y.chars-x.chars).slice(0,2).map(c=>c.name); topSub=` 세특 중에서는 ${t.join('·')} 비중이 커 학업 기록이 뼈대를 이룹니다.`;}
+  return {read:`생기부 텍스트 비중은 ${parts}입니다.${topSub}`, logic:'면적=글자수 비중(활동의 양적 비중이며 질 평가는 아닙니다). 안=영역, 중간=과목/활동, 바깥=대표 키워드.'};
+}
+function judgeBox(j){ return j?`<div class="judge"><div class="judge-read"><b>📌 이렇게 읽습니다</b> · ${esc(j.read)}</div><div class="judge-logic">⚙ 산출 논리: ${esc(j.logic)}</div></div>`:''; }
 // 교과 융합 지도(허브-스포크): 연결=초록 실선, 빈 공간=회색 점선
 function fusionSvg(fm){
   const nodes=fm.nodes,N=nodes.length; if(!N) return '';
@@ -205,38 +242,56 @@ function actHeatSvg(hd){
 }
 // 썬버스트(계층 원형): 안=영역, 중간=과목/영역, 바깥=대표 키워드
 function _arc(cx,cy,r0,r1,a0,a1){const p=(r,a)=>[cx+r*Math.cos(a),cy+r*Math.sin(a)];const lg=(a1-a0)>Math.PI?1:0;const[x0,y0]=p(r1,a0),[x1,y1]=p(r1,a1),[x2,y2]=p(r0,a1),[x3,y3]=p(r0,a0);return `M${x0} ${y0} A${r1} ${r1} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r0} ${r0} 0 ${lg} 0 ${x3} ${y3} Z`;}
+function _lighten(hex,f){const n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255,L=c=>Math.round(c+(255-c)*f);return `rgb(${L(r)},${L(g)},${L(b)})`;}
 function sunburstSvg(sb){
   if(!sb.total)return '';
-  const W=380,H=360,cx=W/2,cy=H/2,r0=30,r1=68,r2=104,r3=138;
+  const W=400,H=384,cx=W/2,cy=H/2,r0=32,r1=78,r2=120,r3=156;
   const areaCol={'세특':'#2f6f4f','창체':'#7a5bb0','행특':'#3b6ea5'};
-  let s=`<svg viewBox="0 0 ${W} ${H}">`, a=-Math.PI/2;
+  let s=`<svg viewBox="0 0 ${W} ${H}"><defs><filter id="sbsh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.18"/></filter></defs>`;
+  let a=-Math.PI/2;
   sb.areas.forEach(ar=>{
     const span=ar.chars/sb.total*2*Math.PI,a0=a,a1=a+span,col=areaCol[ar.name]||'#8a94a0';
-    s+=`<path d="${_arc(cx,cy,r0,r1,a0,a1)}" fill="${col}"/>`;
-    const mid=(a0+a1)/2;s+=`<text x="${cx+((r0+r1)/2)*Math.cos(mid)}" y="${cy+((r0+r1)/2)*Math.sin(mid)+3}" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">${esc(ar.name)}</text>`;
-    let ca=a0;
-    ar.children.slice().sort((x,y)=>y.chars-x.chars).forEach((c,ci)=>{
+    // 중간링: 큰 세그먼트→진한 색, 작은 세그먼트→연한 색(점진 음영)
+    const kids=ar.children.slice().sort((x,y)=>y.chars-x.chars); let ca=a0;
+    kids.forEach((c,ci)=>{
       const cs=c.chars/ar.chars*span,c0=ca,c1=ca+cs,cm=(c0+c1)/2;
-      s+=`<path d="${_arc(cx,cy,r1,r2,c0,c1)}" fill="${col}" fill-opacity="${(0.3+0.45*(ci%2)).toFixed(2)}" stroke="#fff" stroke-width="0.7"/>`;
-      if(cs>0.26)s+=`<text x="${cx+((r1+r2)/2)*Math.cos(cm)}" y="${cy+((r1+r2)/2)*Math.sin(cm)+3}" font-size="8.5" fill="#1f2733" text-anchor="middle">${esc(c.name.length>7?c.name.slice(0,7):c.name)}</text>`;
-      if(c.kw&&cs>0.2){s+=`<path d="${_arc(cx,cy,r2,r3,c0,c1)}" fill="${col}" fill-opacity="0.14" stroke="#fff" stroke-width="0.5"/><text x="${cx+((r2+r3)/2)*Math.cos(cm)}" y="${cy+((r2+r3)/2)*Math.sin(cm)+3}" font-size="8" fill="#6b7684" text-anchor="middle">${esc(c.kw)}</text>`;}
+      const shade=_lighten(col, 0.12+0.52*(ci/Math.max(1,kids.length-1)));
+      s+=`<path d="${_arc(cx,cy,r1,r2,c0,c1)}" fill="${shade}" stroke="#fff" stroke-width="1"/>`;
+      if(cs>0.24)s+=`<text x="${cx+((r1+r2)/2)*Math.cos(cm)}" y="${cy+((r1+r2)/2)*Math.sin(cm)+3}" font-size="9" font-weight="600" fill="#1f2733" text-anchor="middle">${esc(c.name.length>7?c.name.slice(0,7):c.name)}</text>`;
+      if(c.kw&&cs>0.18){s+=`<path d="${_arc(cx,cy,r2,r3,c0,c1)}" fill="${_lighten(col,0.78)}" stroke="#fff" stroke-width="0.6"/><text x="${cx+((r2+r3)/2)*Math.cos(cm)}" y="${cy+((r2+r3)/2)*Math.sin(cm)+3}" font-size="8" fill="${col}" font-weight="600" text-anchor="middle">${esc(c.kw)}</text>`;}
       ca=c1;
     });
+    // 안쪽 영역 링(진한 원색, 그림자)
+    s+=`<path d="${_arc(cx,cy,r0,r1,a0,a1)}" fill="${col}" filter="url(#sbsh)"/>`;
+    const mid=(a0+a1)/2,rl=(r0+r1)/2;
+    s+=`<text x="${cx+rl*Math.cos(mid)}" y="${cy+rl*Math.sin(mid)+4}" font-size="12" font-weight="800" fill="#fff" text-anchor="middle">${esc(ar.name)}</text>`;
     a=a1;
   });
+  // 중앙 라벨(총 글자수)
+  s+=`<circle cx="${cx}" cy="${cy}" r="${r0-3}" fill="var(--card)"/><text x="${cx}" y="${cy-2}" font-size="11" font-weight="800" fill="#1f2733" text-anchor="middle">${(sb.total/1000).toFixed(1)}천자</text><text x="${cx}" y="${cy+11}" font-size="8" fill="#9aa4b0" text-anchor="middle">생기부</text>`;
   return s+'</svg>';
 }
 // 키워드 연결 네트워크(소스노드=교과·창체, 키워드노드, 여러 소스 겹치면 중앙쪽·주황)
 function networkSvg(net){
   if(!net.areas.length||!net.keywords.length)return '';
-  const W=560,H=400,cx=W/2,cy=H/2,R=138;
+  const W=560,H=440,cx=W/2,cy=H/2,R=152;
   const areaCol={'세특':'#2f6f4f','창체':'#7a5bb0'};
+  const maxAreaN=Math.max(1,...net.areas.map(a=>a.n)), maxKw=Math.max(1,...net.keywords.map(k=>k.n));
   const apos={}; net.areas.forEach((ar,i)=>{const a=-Math.PI/2+i*2*Math.PI/net.areas.length;apos[ar.id]={x:cx+R*Math.cos(a),y:cy+R*Math.sin(a),a};});
-  const kpos=net.keywords.map(kw=>{const angs=kw.areas.map(id=>apos[id]?apos[id].a:0);const mx=angs.reduce((s,a)=>s+Math.cos(a),0)/angs.length,my=angs.reduce((s,a)=>s+Math.sin(a),0)/angs.length;const ma=Math.atan2(my,mx);const rr=kw.areas.length>1?R*0.4:R*0.72;return {kw,x:cx+rr*Math.cos(ma),y:cy+rr*Math.sin(ma)};});
-  let s=`<svg viewBox="0 0 ${W} ${H}">`;
-  kpos.forEach(kp=>kp.kw.areas.forEach(id=>{if(apos[id])s+=`<line x1="${apos[id].x}" y1="${apos[id].y}" x2="${kp.x}" y2="${kp.y}" stroke="${kp.kw.areas.length>1?'#c98a3a':'#dae0e6'}" stroke-width="${kp.kw.areas.length>1?1.6:1}"/>`;}));
-  net.areas.forEach(ar=>{const p=apos[ar.id],col=areaCol[ar.type]||'#3b6ea5';s+=`<circle cx="${p.x}" cy="${p.y}" r="22" fill="${col}"/><text x="${p.x}" y="${p.y+3}" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">${esc(ar.label)}</text>`;});
-  kpos.forEach(kp=>{const m=kp.kw.areas.length>1;s+=`<circle cx="${kp.x}" cy="${kp.y}" r="${m?7:5}" fill="${m?'#c98a3a':'#9aa4b0'}"/><text x="${kp.x}" y="${kp.y-9}" font-size="9.5" font-weight="${m?700:400}" fill="#1f2733" text-anchor="middle">${esc(kp.kw.k)}</text>`;});
+  const fusion=net.keywords.filter(k=>k.areas.length>1), single=net.keywords.filter(k=>k.areas.length===1);
+  const kpos=[];
+  // 융합 키워드 = 내부 링에 균등 배치(겹침 방지, 중앙 허브 느낌)
+  fusion.forEach((kw,i)=>{const a=-Math.PI/2+i*2*Math.PI/Math.max(1,fusion.length);kpos.push({kw,x:cx+R*0.44*Math.cos(a),y:cy+R*0.44*Math.sin(a),multi:true});});
+  // 단독 키워드 = 해당 소스 노드 근처(같은 소스끼리 인덱스로 각도 분산)
+  const byArea={}; single.forEach(kw=>{(byArea[kw.areas[0]]=byArea[kw.areas[0]]||[]).push(kw);});
+  Object.entries(byArea).forEach(([id,list])=>{const base=apos[id]?apos[id].a:0;list.forEach((kw,i)=>{const a=base+(i-(list.length-1)/2)*0.26;kpos.push({kw,x:cx+R*0.66*Math.cos(a),y:cy+R*0.66*Math.sin(a),multi:false});});});
+  let s=`<svg viewBox="0 0 ${W} ${H}"><defs><filter id="ng" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="1" stdDeviation="1.3" flood-opacity="0.22"/></filter></defs>`;
+  // 곡선 엣지(중앙쪽으로 살짝 휘게)
+  kpos.forEach(kp=>kp.kw.areas.forEach(id=>{if(apos[id]){const p=apos[id],mx=(p.x+kp.x)/2+(cx-(p.x+kp.x)/2)*0.18,my=(p.y+kp.y)/2+(cy-(p.y+kp.y)/2)*0.18;s+=`<path d="M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${kp.x.toFixed(1)} ${kp.y.toFixed(1)}" fill="none" stroke="${kp.multi?'#d99a3c':'#dbe1e7'}" stroke-width="${kp.multi?2.1:1.1}" opacity="${kp.multi?0.9:0.55}"/>`;}}));
+  // 소스 노드(크기=활동량)
+  net.areas.forEach(ar=>{const p=apos[ar.id],col=areaCol[ar.type]||'#3b6ea5',rad=(18+11*(ar.n/maxAreaN)).toFixed(1);s+=`<circle cx="${p.x}" cy="${p.y}" r="${rad}" fill="${col}" filter="url(#ng)"/><text x="${p.x}" y="${p.y+4}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${esc(ar.label)}</text>`;});
+  // 키워드 노드(크기=빈도, 융합=주황 크게·그림자)
+  kpos.forEach(kp=>{const rad=((kp.multi?6:3.5)+5.5*(kp.kw.n/maxKw)).toFixed(1),col=kp.multi?'#d99a3c':'#aab2bd';s+=`<circle cx="${kp.x}" cy="${kp.y}" r="${rad}" fill="${col}"${kp.multi?' filter="url(#ng)"':''}/><text x="${kp.x}" y="${(kp.y-(+rad)-3).toFixed(1)}" font-size="${kp.multi?11:9.5}" font-weight="${kp.multi?800:600}" fill="${kp.multi?'#8a5a12':'#5a6472'}" text-anchor="middle">${esc(kp.kw.k)}</text>`;});
   return s+'</svg>';
 }
 function render(){
@@ -266,13 +321,17 @@ function render(){
       <div class="desc">불용어·평가어를 제거하고 뽑은 <b>빈도 상위 어휘</b>입니다(형태소 근사). 진로 키워드를 정할 때 출발점으로 쓰세요. <b>칩을 클릭하면 그 단어가 쓰인 원문 문장</b>을 모아 보여줍니다(면접·검토용).${hasKwBox?' 오른쪽 <b>＋</b>는 위 진로 키워드 입력창에 추가합니다.':''}</div>
       <div class="akw-wrap">${auto.map(k=>`<span class="akw" data-kw="${esc(k.word)}" title="원문 문장 보기">${esc(k.word)} <b>${k.n}</b>${hasKwBox?`<button class="akw-add" data-addkw="${esc(k.word)}" title="진로 키워드에 추가">＋</button>`:''}</span>`).join('')}</div>
     </div>`;
-    // 워드 클라우드(빈도 크기 시각화)
+    // 워드 클라우드(빈도 크기·진하기·회전 시각화)
     const mx=Math.max(...auto.map(k=>k.n)), mn=Math.min(...auto.map(k=>k.n));
-    const wsize=n=>(14+((n-mn)/((mx-mn)||1))*24).toFixed(1);
+    const wt=n=>(n-mn)/((mx-mn)||1);
     const wcol=['#2f6f4f','#3b6ea5','#7a5bb0','#b5762a','#c0603a','#2f8f6f'];
+    const rots=[0,-5,4,-3,6,-2,3,-6,5,-4,2,-3];
+    // 빈도순으로 큰 것을 가운데 쪽에 오도록 지그재그 배치(중앙 강조)
+    const ordered=auto.map((k,i)=>({k,i})).sort((a,b)=>b.k.n-a.k.n);
+    const woven=[]; ordered.forEach((o,r)=>{ r%2? woven.push(o):woven.unshift(o); });
     h+=`<div class="card"><h2>☁️ 키워드 클라우드</h2>
-      <div class="desc">생기부에 자주 등장한 어휘를 <b>빈도 크기</b>로 표현했습니다(클수록 자주 등장). <b>단어를 클릭하면 원문 문장</b>이 뜹니다 — 상담 시 학생이 자기 생기부의 방향을 직관적으로 파악하기 좋습니다.</div>
-      <div class="wcloud">${auto.map((k,i)=>`<span class="wcw" data-kw="${esc(k.word)}" style="font-size:${wsize(k.n)}px;color:${wcol[i%wcol.length]}" title="${k.n}회 · 클릭하면 원문">${T(k.word)}</span>`).join('')}</div>
+      <div class="desc">생기부에 자주 등장한 어휘를 <b>빈도 크기·진하기</b>로 표현했습니다(클·진할수록 자주 등장). <b>단어를 클릭하면 원문 문장</b>이 뜹니다 — 상담 시 학생이 자기 생기부의 방향을 직관적으로 파악하기 좋습니다.</div>
+      <div class="wcloud">${woven.map(({k,i})=>{const t=wt(k.n),sz=(16+t*36).toFixed(1),op=(0.5+0.5*t).toFixed(2),wght=500+Math.round(t*3)*100;return `<span class="wcw" data-kw="${esc(k.word)}" style="font-size:${sz}px;color:${wcol[i%wcol.length]};opacity:${op};font-weight:${wght};transform:rotate(${rots[i%rots.length]}deg)" title="${k.n}회 · 클릭하면 원문">${T(k.word)}</span>`;}).join('')}</div>
     </div>`;
     // 계층형 썬버스트(생기부 텍스트 비중)
     const sb=a.sunburst;
@@ -280,6 +339,7 @@ function render(){
       h+=`<div class="card"><h2>🌳 생기부 구성 썬버스트</h2>
         <div class="desc">생기부 텍스트를 <b>안쪽=영역(세특/창체/행특) → 중간=과목·활동 → 바깥=대표 키워드</b> 계층으로 쪼갰습니다. 면적(글자수)으로 <b>어떤 과목·활동이 굵직한 뼈대</b>인지 한눈에 파악합니다.</div>
         <div style="text-align:center">${sunburstSvg(sb)}</div>
+        ${judgeBox(judgeSunburst(sb))}
       </div>`;
     }
   }
@@ -312,10 +372,10 @@ function render(){
   const gt=a.growth;
   if(gt){
     h+=`<div class="card"><h2>📈 학년별 성장 궤적</h2>
-      <div class="desc">학년이 오르며 관심이 <b>넓고 얕은 호기심 → 좁고 깊은 전공 탐구</b>로 발전하는지 추적합니다. 파란 선=학년별 <b>탐구 깊이</b>를 <b>상·중·하</b>로 표기(동기·과정·산출 등 요소가 얼마나 갖춰졌는지 — 등급이 아닙니다). 아래에 학년별 진로 키워드와 <b>주도성 행위 수준</b>(수집→분석→기획·비판)을 함께 봅니다.</div>
+      <div class="desc">학년이 오르며 관심이 <b>넓고 얕은 호기심 → 좁고 깊은 전공 탐구</b>로 발전하는지 추적합니다. 초록 영역=학년별 <b>진로 핵심어 등장 빈도</b>(전공 몰입도), 점 아래 배지=<b>탐구 깊이 상·중·하</b>·진하기=행위 수준. 우상향으로 넓어지면 전공 심화가 짙어진 것입니다. 아래 학년별 상세와 함께 보세요.</div>
       ${gt.multi?`<div style="text-align:center">${growthSvg(gt.rows)}</div>`:''}
+      ${judgeBox(judgeGrowth(gt))}
       ${gt.rows.map(r=>`<div class="gt-row"><span class="gt-g">${r.grade}학년</span><div class="gt-body"><div>${r.keywords.length?r.keywords.map(k=>`<span class="tag">${esc(k.k)}×${k.n}</span>`).join(''):'<span class="g" style="color:var(--sub)">진로 핵심어 미검출</span>'}</div><div class="gt-meta">행위 수준 <b>${esc(r.tierLabel)}</b>${r.verbs.length?` <span class="g">(${r.verbs.slice(0,4).map(esc).join(', ')})</span>`:''} · 탐구 깊이 <b>${esc(r.band)}</b> · 진로 연계 교과 <b>${r.breadth}</b>개</div></div></div>`).join('')}
-      <div class="note">${esc(gt.note)}</div>
     </div>`;
   }
 
@@ -370,8 +430,9 @@ function render(){
   // 2.72) 역량 밸런스 방사형(레이더)
   if(a.radar&&a.radar.length){
     h+=`<div class="card"><h2>🕸️ 역량 밸런스 (레이더)</h2>
-      <div class="desc">추출된 신호를 <b>학업·전공적합성·리더십/소통·자기주도·성실/배려</b> 5개 축으로 매핑해 균형을 한눈에 봅니다. 넓게 펼쳐질수록 고른 강점, 한쪽으로 치우치면 보완 지점입니다(축별 소프트 상한 기준 정규화).</div>
+      <div class="desc">추출된 신호를 <b>학업·전공적합성·리더십/소통·자기주도·성실/배려</b> 5개 축으로 매핑했습니다. 길이는 <b>이 학생 안에서의 상대 강도</b>(가장 강한 축이 바깥 테두리, 나머지는 비례). 오각형이 고르면 균형형, <b>유독 짧은 축이 있으면 그 부분이 보완 지점</b>입니다. 숫자는 실측 신호 수입니다.</div>
       <div style="text-align:center">${radarSvg(a.radar)}</div>
+      ${judgeBox(judgeRadar(a.radar))}
     </div>`;
   }
 

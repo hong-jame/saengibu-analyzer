@@ -630,14 +630,19 @@ export function radarProfile(r, setName, pre = {}) {
   const inq = pre.inquiry || inquiryNarrative(r, setName);
   const sub = (cat, key) => { const g = comp.find(c => c.key === cat); if (!g) return 0; const s = g.subs.find(x => x.key === key); return s ? s.n : 0; };
   const verb = v => (av.cats.find(c => c.v === v) || { n: 0 }).n;
+  // cap = 축별 '충분히 높은' 기준값(관측 표본 기준 보정) — 축 간 규모 차이를 보정해 특정 축 고정 방지
   const raw = [
-    { axis: '학업 역량', v: sub('학업역량', '지적호기심') + sub('학업역량', '탐구·심화'), cap: 12 },
-    { axis: '전공적합성', v: hm.total + inq.rich.length * 2, cap: 30 },
-    { axis: '리더십·소통', v: sub('공동체역량', '협업·소통') + sub('공동체역량', '리더십'), cap: 14 },
-    { axis: '자기주도성', v: sub('학업역량', '자기주도') + verb('기획·설계') + verb('대안·제언'), cap: 10 },
-    { axis: '성실·배려', v: sub('공동체역량', '성실·책임') + sub('공동체역량', '나눔·배려'), cap: 10 },
+    { axis: '학업 역량', v: sub('학업역량', '지적호기심') + sub('학업역량', '탐구·심화'), cap: 18 },
+    { axis: '전공적합성', v: hm.total + inq.rich.length * 2, cap: 90 },
+    { axis: '리더십·소통', v: sub('공동체역량', '협업·소통') + sub('공동체역량', '리더십'), cap: 40 },
+    { axis: '자기주도성', v: sub('학업역량', '자기주도') + verb('기획·설계') + verb('대안·제언'), cap: 16 },
+    { axis: '성실·배려', v: sub('공동체역량', '성실·책임') + sub('공동체역량', '나눔·배려'), cap: 24 },
   ];
-  return raw.map(a => ({ axis: a.axis, value: a.v, norm: Math.min(1, a.v / a.cap) }));
+  // 축마다 단위·규모가 달라 절대 상한만으론 다 포화됨 → 축별 상한 정규화(비교가능) 후,
+  // 이 학생 안에서의 '상대 강도'로 재정규화(가장 강한 축=바깥 테두리, 나머지는 비례해 길고 짧게).
+  const ratios = raw.map(a => a.v / a.cap);
+  const mx = Math.max(0.001, ...ratios);
+  return raw.map((a, i) => ({ axis: a.axis, value: a.v, norm: +(0.08 + 0.92 * (ratios[i] / mx)).toFixed(3) }));
 }
 // 3) 학년×영역 활동 밀도(진로 핵심어 빈도)
 export function activityHeat(r, setName) {
