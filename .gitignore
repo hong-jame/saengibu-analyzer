@@ -1,0 +1,17 @@
+# ── 개인정보(학생 생기부) — 절대 커밋 금지 ──
+*.pdf
+report.html
+fixture_*
+parsed_*
+*.rich.json
+*.lines.json
+*.txt
+parse_test.mjs
+sanity.mjs
+
+# ── 의존성 ──
+node_modules/
+
+# ── OS/편집기 ──
+.DS_Store
+Thumbs.db
