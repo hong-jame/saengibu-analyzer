@@ -303,17 +303,20 @@ function treemapLayout(items,x,y,w,h){
   else{ const h1=h*frac; treemapLayout(left,x,y,w,h1); treemapLayout(right,x,y+h1,w,h-h1); }
 }
 // 키워드 히트맵(트리맵): 빈도=면적, 진하기=상대빈도(주식 히트맵과 같은 관용 스타일)
-function wordHeatmapSvg(auto){
+function wordHeatmapSvg(auto,opts){
   if(!auto.length) return '';
+  opts=opts||{};
   const W=560,H=300;
-  const items=auto.map(k=>({word:k.word,n:k.n,value:k.n}));
+  const base=opts.base||'#2f6f4f';
+  const catColors=opts.catColors||null;       // {cat:색} 지정 시 색=범주, 진하기=빈도
+  const items=auto.map(k=>({word:k.word,n:k.n,cat:k.cat,value:k.n}));
   treemapLayout(items,0,0,W,H);
   const mx=Math.max(...items.map(it=>it.n)), mn=Math.min(...items.map(it=>it.n));
-  const base='#2f6f4f';
   let s=`<svg viewBox="0 0 ${W} ${H}">`;
   items.forEach(it=>{
     const t=(it.n-mn)/((mx-mn)||1);           // 0~1 상대빈도
-    const fill=_lighten(base, 0.72*(1-t));     // 진할수록 빈도 높음
+    const bcol=(catColors&&it.cat&&catColors[it.cat])||base;
+    const fill=_lighten(bcol, 0.72*(1-t));     // 진할수록 빈도 높음
     const dark=t>0.42;
     const cx=it._x+it._w/2, cy=it._y+it._h/2;
     const fit=Math.min(it._w,it._h);
@@ -463,10 +466,28 @@ function render(){
       <div class="akw-wrap">${auto.map(k=>`<span class="akw" data-kw="${esc(k.word)}" title="원문 문장 보기">${esc(k.word)} <b>${k.n}</b>${hasKwBox?`<button class="akw-add" data-addkw="${esc(k.word)}" title="진로 키워드에 추가">＋</button>`:''}</span>`).join('')}</div>
     </div>`;
     // 키워드 히트맵(트리맵 — 주식 히트맵과 같은 스타일: 빈도=사각형 크기, 진하기=상대빈도)
-    h+=`<div class="card"><h2>🟩 키워드 히트맵</h2>
+    h+=`<div class="card"><h2>🟩 키워드 히트맵 <span style="font-size:12px;color:var(--sub);font-weight:400">— 자주 등장한 어휘</span></h2>
       <div class="desc">생기부에 자주 등장한 어휘를 <b>사각형 크기·진하기</b>로 표현했습니다(클·진할수록 자주 등장). <b>사각형을 클릭하면 원문 문장</b>이 뜹니다 — 상담 시 학생이 자기 생기부의 방향을 직관적으로 파악하기 좋습니다.</div>
       ${wordHeatmapSvg(auto)}
     </div>`;
+    // 키워드 히트맵 ② — 전공 지식 어휘(선택 진로군 핵심어)
+    const mkw=a.majorKw||[];
+    if(mkw.length){
+      h+=`<div class="card"><h2>🟦 키워드 히트맵 <span style="font-size:12px;color:var(--sub);font-weight:400">— 전공 지식 어휘</span></h2>
+      <div class="desc">선택한 진로군의 <b>전공 특이적 개념어</b>(예: 유전자·효소·반도체)가 생기부 전반에서 얼마나 등장하는지 크기·진하기로 표현했습니다. 일반 학업 어휘가 아니라 <b>전공 깊이를 드러내는 지식어</b>만 추렸습니다. <b>사각형 클릭 시 원문 문장.</b></div>
+      ${wordHeatmapSvg(mkw,{base:'#2f5f8f'})}
+    </div>`;
+    }
+    // 키워드 히트맵 ③ — 역량 표현 어휘(학업/진로/공동체, 색=역량군)
+    const ckw=a.compKw||[];
+    if(ckw.length){
+      const CAT={학업:'#3f5fa8',진로:'#b8722e',공동체:'#2f8f6f'};
+      h+=`<div class="card"><h2>🟨 키워드 히트맵 <span style="font-size:12px;color:var(--sub);font-weight:400">— 역량 표현 어휘</span></h2>
+      <div class="desc">학업·진로·공동체 <b>역량을 드러내는 표현어</b>(예: 호기심·협력·성찰)의 등장 빈도입니다. <b>색=역량군, 크기·진하기=빈도.</b> 부정 서술(‘~하지 못함’)은 제외했습니다. <b>사각형 클릭 시 원문 문장.</b></div>
+      <div class="dleg" style="display:flex;gap:14px;margin:2px 0 8px">${Object.entries(CAT).map(([k,c])=>`<div><i style="background:${c}"></i>${k}역량</div>`).join('')}</div>
+      ${wordHeatmapSvg(ckw,{catColors:CAT})}
+    </div>`;
+    }
     // 계층형 썬버스트(생기부 텍스트 비중)
     const sb=a.sunburst;
     if(sb && sb.total){

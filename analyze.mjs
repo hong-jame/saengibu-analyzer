@@ -503,6 +503,44 @@ export function autoKeywords(r) {
     .slice(0, 12);
 }
 
+/* ── 전공 지식 키워드(히트맵용) ──
+   선택 진로군의 전공 특이적 핵심어(core)만, 생기부 전반에서의 등장 빈도로.
+   긴 핵심어부터 마스킹해 '유전자' 안의 '유전' 이중집계 방지(단독 시각화용 정제). */
+export function majorKeywords(r, setName) {
+  const core = getSet(setName).core;
+  const texts = [];
+  r.details.forEach(d => d.text && texts.push(d.text));
+  ['autonomy', 'club', 'career'].forEach(k => r.creative[k].forEach(a => a.text && texts.push(a.text)));
+  (r.behavior || []).forEach(b => b.text && texts.push(b.text));
+  (r.awards || []).forEach(a => a.name && texts.push(a.name));
+  let masked = texts.join(' \n ');
+  const bag = {};
+  [...core].sort((a, b) => b.length - a.length).forEach(k => {
+    const m = masked.match(new RegExp(_esc(k), 'g'));
+    if (m) { bag[k] = m.length; masked = masked.split(k).join(' '.repeat(k.length)); }
+  });
+  return Object.entries(bag).map(([word, n]) => ({ word, n })).sort((a, b) => b.n - a.n).slice(0, 12);
+}
+
+/* ── 역량 표현 키워드(히트맵용) ──
+   COMPETENCY의 하위 표현어를 문장 단위(부정어 보정)로 집계, 어느 역량군(학업/진로/공동체)인지 cat로 표시. */
+export function competencyKeywords(r) {
+  const an = { autonomy: '자율', club: '동아리', career: '진로' };
+  const texts = [];
+  r.details.forEach(d => d.text && texts.push(d.text));
+  ['autonomy', 'club', 'career'].forEach(k => r.creative[k].forEach(a => a.text && texts.push(a.text)));
+  (r.behavior || []).forEach(b => b.text && texts.push(b.text));
+  const sents = [];
+  texts.forEach(t => t.split(/(?<=[가-힣)])\.\s+/).forEach(s => { s = s.trim(); if (s.length > 8) sents.push(s); }));
+  const CATLABEL = { 학업역량: '학업', 진로역량: '진로', 공동체역량: '공동체' };
+  const bag = {}, cat = {};
+  Object.entries(COMPETENCY).forEach(([ck, def]) => def.subs.forEach(sub => sub.kws.forEach(k => {
+    let n = 0; sents.forEach(s => { if (hasPositiveHit(s, k)) n++; });
+    if (n) { bag[k] = (bag[k] || 0) + n; cat[k] = cat[k] || CATLABEL[ck]; }
+  })));
+  return Object.entries(bag).map(([word, n]) => ({ word, n, cat: cat[word] })).sort((a, b) => b.n - a.n).slice(0, 14);
+}
+
 /* ── Action Verb 수준(tier): 1=수집·탐색 / 2=분석·적용 / 3=기획·비판·제언 ── */
 export const ACTION_TIER = { '탐구·조사': 1, '적용·실행': 2, '분석·비교': 2, '질문·문제제기': 3, '기획·설계': 3, '비판·평가': 3, '대안·제언': 3 };
 const TIER_LABEL = { 0: '—', 1: '수집·탐색', 2: '분석·적용', 3: '기획·비판·제언' };
@@ -756,6 +794,8 @@ export function analyze(r, setName = '생명·과학') {
     sunburst: sunburstData(r, setName),
     network: keywordNetwork(r, setName),
     auto: autoKeywords(r),
+    majorKw: majorKeywords(r, setName),
+    compKw: competencyKeywords(r),
     interview: interviewQuestions(r, setName, { thread, inquiry, advanced, fusion, competency }),
     nextSteps: nextSteps(r, setName, { heatmap, thread, actions, inquiry, fusion }),
     profile: profile(r, setName),
