@@ -115,9 +115,6 @@ button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .akw{display:inline-flex;align-items:center;gap:5px;background:var(--soft);color:var(--accent);border-radius:16px;padding:4px 10px;font-size:13px;font-weight:600;cursor:pointer}
 .akw b{color:var(--ink);font-weight:700}
 .akw-add{border:none;background:var(--accent);color:#fff;width:18px;height:18px;border-radius:50%;font-size:13px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center}
-.wcloud{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;justify-content:center;padding:18px 8px;line-height:1.1}
-.wcw{display:inline-block;cursor:pointer;letter-spacing:-.3px;transform-origin:center;transition:transform .15s}
-.wcw:hover{text-decoration:underline;transform:scale(1.12) rotate(0deg)!important;opacity:1!important}
 .judge{margin:12px 0 2px;padding:11px 13px;background:var(--soft);border-left:3px solid var(--accent);border-radius:8px}
 .judge-read{font-size:13px;line-height:1.55;color:var(--ink)}
 .judge-read b{color:var(--accent)}

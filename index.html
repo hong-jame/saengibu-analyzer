@@ -117,9 +117,6 @@ button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .akw{display:inline-flex;align-items:center;gap:5px;background:var(--soft);color:var(--accent);border-radius:16px;padding:4px 10px;font-size:13px;font-weight:600;cursor:pointer}
 .akw b{color:var(--ink);font-weight:700}
 .akw-add{border:none;background:var(--accent);color:#fff;width:18px;height:18px;border-radius:50%;font-size:13px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center}
-.wcloud{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;justify-content:center;padding:18px 8px;line-height:1.1}
-.wcw{display:inline-block;cursor:pointer;letter-spacing:-.3px;transform-origin:center;transition:transform .15s}
-.wcw:hover{text-decoration:underline;transform:scale(1.12) rotate(0deg)!important;opacity:1!important}
 .judge{margin:12px 0 2px;padding:11px 13px;background:var(--soft);border-left:3px solid var(--accent);border-radius:8px}
 .judge-read{font-size:13px;line-height:1.55;color:var(--ink)}
 .judge-read b{color:var(--accent)}
@@ -1835,6 +1832,45 @@ function actHeatSvg(hd){
 // 썬버스트(계층 원형): 안=영역, 중간=과목/영역, 바깥=대표 키워드
 function _arc(cx,cy,r0,r1,a0,a1){const p=(r,a)=>[cx+r*Math.cos(a),cy+r*Math.sin(a)];const lg=(a1-a0)>Math.PI?1:0;const[x0,y0]=p(r1,a0),[x1,y1]=p(r1,a1),[x2,y2]=p(r0,a1),[x3,y3]=p(r0,a0);return `M${x0} ${y0} A${r1} ${r1} 0 ${lg} 1 ${x1} ${y1} L${x2} ${y2} A${r0} ${r0} 0 ${lg} 0 ${x3} ${y3} Z`;}
 function _lighten(hex,f){const n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255,L=c=>Math.round(c+(255-c)*f);return `rgb(${L(r)},${L(g)},${L(b)})`;}
+// 간단 이진분할 트리맵(주식 히트맵 스타일): 값 비례 사각형, 매번 더 긴 변을 절반값 기준으로 자름
+function treemapLayout(items,x,y,w,h){
+  if(items.length===1){ items[0]._x=x; items[0]._y=y; items[0]._w=w; items[0]._h=h; return; }
+  const total=items.reduce((a,b)=>a+b.value,0);
+  let cum=0,splitIdx=1,best=Infinity;
+  for(let i=1;i<items.length;i++){ cum+=items[i-1].value; const diff=Math.abs(cum-total/2); if(diff<best){best=diff;splitIdx=i;} }
+  const left=items.slice(0,splitIdx), right=items.slice(splitIdx);
+  const leftSum=left.reduce((a,b)=>a+b.value,0), frac=Math.max(0.06,Math.min(0.94,leftSum/total));
+  if(w>=h){ const w1=w*frac; treemapLayout(left,x,y,w1,h); treemapLayout(right,x+w1,y,w-w1,h); }
+  else{ const h1=h*frac; treemapLayout(left,x,y,w,h1); treemapLayout(right,x,y+h1,w,h-h1); }
+}
+// 키워드 히트맵(트리맵): 빈도=면적, 진하기=상대빈도(주식 히트맵과 같은 관용 스타일)
+function wordHeatmapSvg(auto){
+  if(!auto.length) return '';
+  const W=560,H=300;
+  const items=auto.map(k=>({word:k.word,n:k.n,value:k.n}));
+  treemapLayout(items,0,0,W,H);
+  const mx=Math.max(...items.map(it=>it.n)), mn=Math.min(...items.map(it=>it.n));
+  const base='#2f6f4f';
+  let s=`<svg viewBox="0 0 ${W} ${H}">`;
+  items.forEach(it=>{
+    const t=(it.n-mn)/((mx-mn)||1);           // 0~1 상대빈도
+    const fill=_lighten(base, 0.72*(1-t));     // 진할수록 빈도 높음
+    const dark=t>0.42;
+    const cx=it._x+it._w/2, cy=it._y+it._h/2;
+    const fit=Math.min(it._w,it._h);
+    const wordSz=Math.max(9,Math.min(17,fit*0.22)).toFixed(1);
+    const numSz=Math.max(8,Math.min(12,fit*0.15)).toFixed(1);
+    const showWord=it._w>30&&it._h>22;
+    s+=`<g data-kw="${esc(it.word)}" style="cursor:pointer">`;
+    s+=`<rect x="${it._x.toFixed(1)}" y="${it._y.toFixed(1)}" width="${Math.max(0,it._w-2).toFixed(1)}" height="${Math.max(0,it._h-2).toFixed(1)}" rx="4" fill="${fill}"><title>${esc(it.word)} ${it.n}회 · 클릭하면 원문</title></rect>`;
+    if(showWord){
+      s+=`<text x="${cx.toFixed(1)}" y="${(cy-3).toFixed(1)}" font-size="${wordSz}" font-weight="700" fill="${dark?'#fff':'#1f2733'}" text-anchor="middle">${T(it.word)}</text>`;
+      s+=`<text x="${cx.toFixed(1)}" y="${(cy+11).toFixed(1)}" font-size="${numSz}" fill="${dark?'rgba(255,255,255,.8)':'rgba(31,39,51,.6)'}" text-anchor="middle">${it.n}회</text>`;
+    }
+    s+='</g>';
+  });
+  return s+'</svg>';
+}
 function sunburstSvg(sb){
   if(!sb.total)return '';
   const W=400,H=384,cx=W/2,cy=H/2,r0=32,r1=78,r2=120,r3=156;
@@ -1922,17 +1958,10 @@ function render(){
       <div class="desc">불용어·평가어를 제거하고 뽑은 <b>빈도 상위 어휘</b>입니다(형태소 근사). 진로 키워드를 정할 때 출발점으로 쓰세요. <b>칩을 클릭하면 그 단어가 쓰인 원문 문장</b>을 모아 보여줍니다(면접·검토용).${hasKwBox?' 오른쪽 <b>＋</b>는 위 진로 키워드 입력창에 추가합니다.':''}</div>
       <div class="akw-wrap">${auto.map(k=>`<span class="akw" data-kw="${esc(k.word)}" title="원문 문장 보기">${esc(k.word)} <b>${k.n}</b>${hasKwBox?`<button class="akw-add" data-addkw="${esc(k.word)}" title="진로 키워드에 추가">＋</button>`:''}</span>`).join('')}</div>
     </div>`;
-    // 워드 클라우드(빈도 크기·진하기·회전 시각화)
-    const mx=Math.max(...auto.map(k=>k.n)), mn=Math.min(...auto.map(k=>k.n));
-    const wt=n=>(n-mn)/((mx-mn)||1);
-    const wcol=['#2f6f4f','#3b6ea5','#7a5bb0','#b5762a','#c0603a','#2f8f6f'];
-    const rots=[0,-5,4,-3,6,-2,3,-6,5,-4,2,-3];
-    // 빈도순으로 큰 것을 가운데 쪽에 오도록 지그재그 배치(중앙 강조)
-    const ordered=auto.map((k,i)=>({k,i})).sort((a,b)=>b.k.n-a.k.n);
-    const woven=[]; ordered.forEach((o,r)=>{ r%2? woven.push(o):woven.unshift(o); });
-    h+=`<div class="card"><h2>☁️ 키워드 클라우드</h2>
-      <div class="desc">생기부에 자주 등장한 어휘를 <b>빈도 크기·진하기</b>로 표현했습니다(클·진할수록 자주 등장). <b>단어를 클릭하면 원문 문장</b>이 뜹니다 — 상담 시 학생이 자기 생기부의 방향을 직관적으로 파악하기 좋습니다.</div>
-      <div class="wcloud">${woven.map(({k,i})=>{const t=wt(k.n),sz=(16+t*36).toFixed(1),op=(0.5+0.5*t).toFixed(2),wght=500+Math.round(t*3)*100;return `<span class="wcw" data-kw="${esc(k.word)}" style="font-size:${sz}px;color:${wcol[i%wcol.length]};opacity:${op};font-weight:${wght};transform:rotate(${rots[i%rots.length]}deg)" title="${k.n}회 · 클릭하면 원문">${T(k.word)}</span>`;}).join('')}</div>
+    // 키워드 히트맵(트리맵 — 주식 히트맵과 같은 스타일: 빈도=사각형 크기, 진하기=상대빈도)
+    h+=`<div class="card"><h2>🟩 키워드 히트맵</h2>
+      <div class="desc">생기부에 자주 등장한 어휘를 <b>사각형 크기·진하기</b>로 표현했습니다(클·진할수록 자주 등장). <b>사각형을 클릭하면 원문 문장</b>이 뜹니다 — 상담 시 학생이 자기 생기부의 방향을 직관적으로 파악하기 좋습니다.</div>
+      ${wordHeatmapSvg(auto)}
     </div>`;
     // 계층형 썬버스트(생기부 텍스트 비중)
     const sb=a.sunburst;
@@ -2138,7 +2167,7 @@ function render(){
 const SECTIONS=[
   {key:'summary', title:'🎓 핵심 요약', open:true,  match:['종합 총평','Key Highlights','성적 강점맵','역량 밸런스']},
   {key:'act',     title:'📚 활동·세특·역량', open:true, match:['창체 진화','세특 리뷰','3대 역량','주도성 행위']},
-  {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 클라우드','성장 궤적','활동 밀도','진로 일관성','융합 지도','키워드 연결 네트워크','교과·활동 × 진로','썬버스트','합격 기준']},
+  {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 히트맵','성장 궤적','활동 밀도','진로 일관성','융합 지도','키워드 연결 네트워크','교과·활동 × 진로','썬버스트','합격 기준']},
   {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','심화 탐구','Weak Spots','Next Step','면접·상담']},
   {key:'raw',     title:'📊 원자료', open:false, match:['성적 상세']},
 ];
