@@ -250,15 +250,16 @@ function overallSummary(a){
 // 교과 융합 지도(허브-스포크): 연결=초록 실선, 빈 공간=회색 점선
 function fusionSvg(fm){
   const nodes=fm.nodes,N=nodes.length; if(!N) return '';
-  const W=560,H=300,cx=W/2,cy=H/2,R=108; const main=fm.main[0]||'진로';
+  const W=560,H=300,cx=W/2,cy=H/2,R=Math.min(150,86+N*8); const main=fm.main[0]||'진로';
+  const GREEN='#178055';
   let s=`<svg viewBox="0 0 ${W} ${H}">`;
   const pos=nodes.map((nd,i)=>{const a=-Math.PI/2+i*2*Math.PI/N;return{nd,nx:cx+R*Math.cos(a),ny:cy+R*Math.sin(a)}});
-  pos.forEach(({nd,nx,ny})=>s+=`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${nd.present?'#2f8f5f':'#ccd0d6'}" stroke-width="${nd.present?2:1.2}"${nd.present?'':' stroke-dasharray="4 4"'}/>`);
-  pos.forEach(({nd,nx,ny})=>{const col=nd.present?'#2f8f5f':'#aeb4bd',bg=nd.present?'#eaf5ef':'#f4f5f7';
-    s+=`<rect x="${nx-33}" y="${ny-15}" width="66" height="30" rx="8" fill="${bg}" stroke="${col}" stroke-width="1.4"${nd.present?'':' stroke-dasharray="4 3"'}/>`;
+  pos.forEach(({nd,nx,ny})=>s+=`<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="${nd.present?GREEN:'#ccd0d6'}" stroke-width="${nd.present?2:1.2}"${nd.present?'':' stroke-dasharray="4 4"'}/>`);
+  pos.forEach(({nd,nx,ny})=>{const col=nd.present?GREEN:'#aeb4bd',bg=nd.present?'#e6f3ec':'#f4f5f7';
+    s+=`<rect x="${nx-33}" y="${ny-15}" width="66" height="30" rx="8" fill="${bg}" stroke="${col}" stroke-width="1.4"${nd.present?'':' stroke-dasharray="4 3"'}><title>${nd.group}${nd.present?' · '+nd.n+'회':' · 빈 공간'}</title></rect>`;
     s+=`<text x="${nx}" y="${ny-1}" text-anchor="middle" font-size="12" font-weight="700" fill="${nd.present?'#1f2733':'#9aa4b0'}">${nd.group}</text>`;
-    s+=`<text x="${nx}" y="${ny+11}" text-anchor="middle" font-size="9" fill="${nd.present?'#2f8f5f':'#aeb4bd'}">${nd.present?nd.n+'회':'빈 공간'}</text>`;});
-  s+=`<circle cx="${cx}" cy="${cy}" r="31" fill="#2f6f4f"/><text x="${cx}" y="${cy-1}" text-anchor="middle" font-size="${main.length>4?10:12}" font-weight="700" fill="#fff">${esc(main)}</text><text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="8" fill="#cfe6d8">진로 핵심</text>`;
+    s+=`<text x="${nx}" y="${ny+11}" text-anchor="middle" font-size="9" fill="${nd.present?GREEN:'#aeb4bd'}">${nd.present?nd.n+'회':'빈 공간'}</text>`;});
+  s+=`<circle cx="${cx}" cy="${cy}" r="31" fill="${GREEN}"/><text x="${cx}" y="${cy-1}" text-anchor="middle" font-size="${main.length>4?10:12}" font-weight="700" fill="#fff">${esc(main)}</text><text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="8" fill="#cfe6d8">진로 핵심</text>`;
   return s+'</svg>';
 }
 // 역량 밸런스 방사형(레이더)
@@ -329,10 +330,24 @@ function wordHeatmapSvg(auto){
   });
   return s+'</svg>';
 }
+// 호를 따라 눕는 접선 라벨(좁은 조각도 읽히도록 회전) — 왼쪽 절반은 뒤집어 거꾸로 보이지 않게
+function tangentLabel(x,y,cm,text,fontSize,fill,weight){
+  let deg=cm*180/Math.PI+90; if(Math.cos(cm)<0) deg+=180;
+  return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" font-size="${fontSize}" font-weight="${weight||600}" fill="${fill}" text-anchor="middle" transform="rotate(${deg.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)})">${text}</text>`;
+}
+// 호 길이(px) 대비 글자 수를 추정해 라벨을 자름. '·'로 묶인 복수과목명은 앞쪽 하나만 사용(정보 손실 적고 짧음).
+// 이웃 라벨과 맞닿지 않도록 여유(0.8배)를 두고, 그래도 안 들어가면 라벨을 생략(hover 툴팁으로 대체) — 억지로 채우지 않음.
+function fitArcLabel(name, arcLenPx, fontSize){
+  const base = name.split('·')[0];
+  const usable = arcLenPx*0.8;
+  const maxChars = Math.floor(usable/(fontSize*1.15));
+  if(maxChars<2) return null;
+  return base.length>maxChars ? base.slice(0,maxChars) : base;
+}
 function sunburstSvg(sb){
   if(!sb.total)return '';
-  const W=400,H=384,cx=W/2,cy=H/2,r0=32,r1=78,r2=120,r3=156;
-  const areaCol={'세특':'#2f6f4f','창체':'#7a5bb0','행특':'#3b6ea5'};
+  const W=420,H=404,cx=W/2,cy=H/2,r0=34,r1=80,r2=124,r3=162;
+  const areaCol={'세특':'#178055','창체':'#3b6ea5','행특':'#b5762a'};
   let s=`<svg viewBox="0 0 ${W} ${H}"><defs><filter id="sbsh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.18"/></filter></defs>`;
   let a=-Math.PI/2;
   sb.areas.forEach(ar=>{
@@ -341,43 +356,74 @@ function sunburstSvg(sb){
     const kids=ar.children.slice().sort((x,y)=>y.chars-x.chars); let ca=a0;
     kids.forEach((c,ci)=>{
       const cs=c.chars/ar.chars*span,c0=ca,c1=ca+cs,cm=(c0+c1)/2;
-      const shade=_lighten(col, 0.12+0.52*(ci/Math.max(1,kids.length-1)));
-      s+=`<path d="${_arc(cx,cy,r1,r2,c0,c1)}" fill="${shade}" stroke="#fff" stroke-width="1"/>`;
-      if(cs>0.24)s+=`<text x="${cx+((r1+r2)/2)*Math.cos(cm)}" y="${cy+((r1+r2)/2)*Math.sin(cm)+3}" font-size="9" font-weight="600" fill="#1f2733" text-anchor="middle">${esc(c.name.length>7?c.name.slice(0,7):c.name)}</text>`;
-      if(c.kw&&cs>0.18){s+=`<path d="${_arc(cx,cy,r2,r3,c0,c1)}" fill="${_lighten(col,0.78)}" stroke="#fff" stroke-width="0.6"/><text x="${cx+((r2+r3)/2)*Math.cos(cm)}" y="${cy+((r2+r3)/2)*Math.sin(cm)+3}" font-size="8" fill="${col}" font-weight="600" text-anchor="middle">${esc(c.kw)}</text>`;}
+      const lf=0.1+0.5*(ci/Math.max(1,kids.length-1)), shade=_lighten(col,lf), midDark=lf<0.32;
+      s+=`<path d="${_arc(cx,cy,r1,r2,c0,c1)}" fill="${shade}" stroke="#fff" stroke-width="1"><title>${esc(c.name)} · ${c.chars}자</title></path>`;
+      if(cs>0.14){const rl=(r1+r2)/2,tx=cx+rl*Math.cos(cm),ty=cy+rl*Math.sin(cm),lbl=fitArcLabel(c.name,cs*rl,9);if(lbl)s+=tangentLabel(tx,ty,cm,esc(lbl),9,midDark?'#fff':'#1f2733',700);}
+      if(c.kw&&cs>0.12){s+=`<path d="${_arc(cx,cy,r2,r3,c0,c1)}" fill="${_lighten(col,0.8)}" stroke="#fff" stroke-width="0.6"/>`;const rl=(r2+r3)/2,tx=cx+rl*Math.cos(cm),ty=cy+rl*Math.sin(cm),lbl=fitArcLabel(c.kw,cs*rl,8);if(lbl)s+=tangentLabel(tx,ty,cm,esc(lbl),8,col,600);}
       ca=c1;
     });
     // 안쪽 영역 링(진한 원색, 그림자)
-    s+=`<path d="${_arc(cx,cy,r0,r1,a0,a1)}" fill="${col}" filter="url(#sbsh)"/>`;
-    const mid=(a0+a1)/2,rl=(r0+r1)/2;
-    s+=`<text x="${cx+rl*Math.cos(mid)}" y="${cy+rl*Math.sin(mid)+4}" font-size="12" font-weight="800" fill="#fff" text-anchor="middle">${esc(ar.name)}</text>`;
+    s+=`<path d="${_arc(cx,cy,r0,r1,a0,a1)}" fill="${col}" filter="url(#sbsh)"><title>${esc(ar.name)} · ${ar.chars}자 (${Math.round(ar.chars/sb.total*100)}%)</title></path>`;
+    const mid=(a0+a1)/2,rl2=(r0+r1)/2;
+    s+=`<text x="${cx+rl2*Math.cos(mid)}" y="${cy+rl2*Math.sin(mid)+4}" font-size="12" font-weight="800" fill="#fff" text-anchor="middle">${esc(ar.name)}</text>`;
     a=a1;
   });
   // 중앙 라벨(총 글자수)
-  s+=`<circle cx="${cx}" cy="${cy}" r="${r0-3}" fill="var(--card)"/><text x="${cx}" y="${cy-2}" font-size="11" font-weight="800" fill="#1f2733" text-anchor="middle">${(sb.total/1000).toFixed(1)}천자</text><text x="${cx}" y="${cy+11}" font-size="8" fill="#9aa4b0" text-anchor="middle">생기부</text>`;
+  s+=`<circle cx="${cx}" cy="${cy}" r="${r0-3}" fill="var(--card)"/><text x="${cx}" y="${cy-2}" font-size="11" font-weight="800" fill="var(--ink)" text-anchor="middle">${(sb.total/1000).toFixed(1)}천자</text><text x="${cx}" y="${cy+11}" font-size="8" fill="var(--sub)" text-anchor="middle">생기부</text>`;
   return s+'</svg>';
 }
-// 키워드 연결 네트워크(소스노드=교과·창체, 키워드노드, 여러 소스 겹치면 중앙쪽·주황)
+/* 경량 force-directed 레이아웃(Fruchterman-Reingold 계열) — 순수 JS, 외부 라이브러리 없음.
+   평균각도 배치 대신 물리 시뮬레이션으로 겹침·엉킴(hairball)을 줄인다. nodes: [{id,r}], edges: [{from,to}]. */
+function forceLayout(nodes, edges, W, H){
+  const n = nodes.length; if(!n) return;
+  const idx={}; nodes.forEach((nd,i)=>idx[nd.id]=i);
+  nodes.forEach((nd,i)=>{ const a=-Math.PI/2+i*2*Math.PI/n, rr=Math.min(W,H)*0.32; nd.x=W/2+rr*Math.cos(a); nd.y=H/2+rr*Math.sin(a); });
+  const k = Math.sqrt((W*H)/Math.max(1,n))*0.9;
+  const ITER=260;
+  for(let iter=0; iter<ITER; iter++){
+    const cool = Math.max(0.03, 1-iter/ITER), temp = cool*k*0.6;
+    const fx=new Array(n).fill(0), fy=new Array(n).fill(0);
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){
+      let dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y;
+      let dist=Math.sqrt(dx*dx+dy*dy)||0.01;
+      const minDist=nodes[i].r+nodes[j].r+20;
+      let force=(k*k)/dist; if(dist<minDist) force+=(minDist-dist)*3;
+      dx/=dist; dy/=dist;
+      fx[i]+=dx*force; fy[i]+=dy*force; fx[j]-=dx*force; fy[j]-=dy*force;
+    }
+    edges.forEach(e=>{
+      const i=idx[e.from], j=idx[e.to]; if(i==null||j==null) return;
+      let dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y;
+      let dist=Math.sqrt(dx*dx+dy*dy)||0.01;
+      const force=(dist*dist)/k*0.55;
+      dx/=dist; dy/=dist;
+      fx[i]-=dx*force; fy[i]-=dy*force; fx[j]+=dx*force; fy[j]+=dy*force;
+    });
+    for(let i=0;i<n;i++){
+      fx[i]+=(W/2-nodes[i].x)*0.012; fy[i]+=(H/2-nodes[i].y)*0.012;
+      const dlen=Math.sqrt(fx[i]*fx[i]+fy[i]*fy[i])||0.01, lim=Math.min(dlen,temp);
+      nodes[i].x+=(fx[i]/dlen)*lim; nodes[i].y+=(fy[i]/dlen)*lim;
+      nodes[i].x=Math.max(nodes[i].r+8,Math.min(W-nodes[i].r-8,nodes[i].x));
+      nodes[i].y=Math.max(nodes[i].r+8,Math.min(H-nodes[i].r-8,nodes[i].y));
+    }
+  }
+}
+// 키워드 연결 네트워크(소스노드=교과·창체, 키워드노드, 여러 소스 겹치면 융합·강조) — force-directed 배치
 function networkSvg(net){
   if(!net.areas.length||!net.keywords.length)return '';
-  const W=560,H=440,cx=W/2,cy=H/2,R=152;
-  const areaCol={'세특':'#2f6f4f','창체':'#7a5bb0'};
+  const W=560,H=420;
+  const areaCol={'세특':'#178055','창체':'#3b6ea5'};
   const maxAreaN=Math.max(1,...net.areas.map(a=>a.n)), maxKw=Math.max(1,...net.keywords.map(k=>k.n));
-  const apos={}; net.areas.forEach((ar,i)=>{const a=-Math.PI/2+i*2*Math.PI/net.areas.length;apos[ar.id]={x:cx+R*Math.cos(a),y:cy+R*Math.sin(a),a};});
-  const fusion=net.keywords.filter(k=>k.areas.length>1), single=net.keywords.filter(k=>k.areas.length===1);
-  const kpos=[];
-  // 융합 키워드 = 내부 링에 균등 배치(겹침 방지, 중앙 허브 느낌)
-  fusion.forEach((kw,i)=>{const a=-Math.PI/2+i*2*Math.PI/Math.max(1,fusion.length);kpos.push({kw,x:cx+R*0.44*Math.cos(a),y:cy+R*0.44*Math.sin(a),multi:true});});
-  // 단독 키워드 = 해당 소스 노드 근처(같은 소스끼리 인덱스로 각도 분산)
-  const byArea={}; single.forEach(kw=>{(byArea[kw.areas[0]]=byArea[kw.areas[0]]||[]).push(kw);});
-  Object.entries(byArea).forEach(([id,list])=>{const base=apos[id]?apos[id].a:0;list.forEach((kw,i)=>{const a=base+(i-(list.length-1)/2)*0.26;kpos.push({kw,x:cx+R*0.66*Math.cos(a),y:cy+R*0.66*Math.sin(a),multi:false});});});
+  const areaNodes=net.areas.map(ar=>({id:'A:'+ar.id, ar, r:18+11*(ar.n/maxAreaN)}));
+  const kwNodes=net.keywords.map(kw=>({id:'K:'+kw.k, kw, multi:kw.areas.length>1, r:(kw.areas.length>1?7:4)+5*(kw.n/maxKw)}));
+  const nodes=[...areaNodes,...kwNodes];
+  const edges=[]; kwNodes.forEach(kn=>kn.kw.areas.forEach(id=>edges.push({from:'A:'+id,to:kn.id})));
+  forceLayout(nodes,edges,W,H);
+  const pos={}; nodes.forEach(nd=>pos[nd.id]=nd);
   let s=`<svg viewBox="0 0 ${W} ${H}"><defs><filter id="ng" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="1" stdDeviation="1.3" flood-opacity="0.22"/></filter></defs>`;
-  // 곡선 엣지(중앙쪽으로 살짝 휘게)
-  kpos.forEach(kp=>kp.kw.areas.forEach(id=>{if(apos[id]){const p=apos[id],mx=(p.x+kp.x)/2+(cx-(p.x+kp.x)/2)*0.18,my=(p.y+kp.y)/2+(cy-(p.y+kp.y)/2)*0.18;s+=`<path d="M${p.x.toFixed(1)} ${p.y.toFixed(1)} Q${mx.toFixed(1)} ${my.toFixed(1)} ${kp.x.toFixed(1)} ${kp.y.toFixed(1)}" fill="none" stroke="${kp.multi?'#d99a3c':'#dbe1e7'}" stroke-width="${kp.multi?2.1:1.1}" opacity="${kp.multi?0.9:0.55}"/>`;}}));
-  // 소스 노드(크기=활동량)
-  net.areas.forEach(ar=>{const p=apos[ar.id],col=areaCol[ar.type]||'#3b6ea5',rad=(18+11*(ar.n/maxAreaN)).toFixed(1);s+=`<circle cx="${p.x}" cy="${p.y}" r="${rad}" fill="${col}" filter="url(#ng)"/><text x="${p.x}" y="${p.y+4}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${esc(ar.label)}</text>`;});
-  // 키워드 노드(크기=빈도, 융합=주황 크게·그림자)
-  kpos.forEach(kp=>{const rad=((kp.multi?6:3.5)+5.5*(kp.kw.n/maxKw)).toFixed(1),col=kp.multi?'#d99a3c':'#aab2bd';s+=`<circle cx="${kp.x}" cy="${kp.y}" r="${rad}" fill="${col}"${kp.multi?' filter="url(#ng)"':''}/><text x="${kp.x}" y="${(kp.y-(+rad)-3).toFixed(1)}" font-size="${kp.multi?11:9.5}" font-weight="${kp.multi?800:600}" fill="${kp.multi?'#8a5a12':'#5a6472'}" text-anchor="middle">${esc(kp.kw.k)}</text>`;});
+  edges.forEach(e=>{const p=pos[e.from],q=pos[e.to],kn=pos[e.to];s+=`<line x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${q.x.toFixed(1)}" y2="${q.y.toFixed(1)}" stroke="${kn.multi?'#c9822f':'#dbe1e7'}" stroke-width="${kn.multi?2:1.1}" opacity="${kn.multi?0.85:0.5}"/>`;});
+  areaNodes.forEach(nd=>{const p=pos[nd.id];s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nd.r.toFixed(1)}" fill="${areaCol[nd.ar.type]||'#3b6ea5'}" filter="url(#ng)"><title>${esc(nd.ar.label)} · ${nd.ar.n}회</title></circle><text x="${p.x.toFixed(1)}" y="${(p.y+4).toFixed(1)}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${esc(nd.ar.label)}</text>`;});
+  kwNodes.forEach(nd=>{const p=pos[nd.id],col=nd.multi?'#c9822f':'#aab2bd';s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nd.r.toFixed(1)}" fill="${col}"${nd.multi?' filter="url(#ng)"':''}><title>${esc(nd.kw.k)} · ${nd.kw.n}회 · ${nd.kw.areas.length}곳</title></circle><text x="${p.x.toFixed(1)}" y="${(p.y-nd.r-3).toFixed(1)}" font-size="${nd.multi?11:9.5}" font-weight="${nd.multi?800:600}" fill="${nd.multi?'#8a5a12':'#5a6472'}" text-anchor="middle">${esc(nd.kw.k)}</text>`;});
   return s+'</svg>';
 }
 function render(){
@@ -541,7 +587,7 @@ function render(){
   const fm=a.fusion;
   if(fm && fm.nodes.length){
     h+=`<div class="card"><h2>🕸️ 전공적합성 교과 융합 지도</h2>
-      <div class="desc">메인 진로 키워드(<b>${esc(fm.main[0]||'—')}</b>)가 <b>서로 다른 교과</b>에서 탐구됐는지를 지도로 봅니다. <span style="color:#2f8f5f;font-weight:700">초록 실선</span>=탐구가 연결된 교과, <span style="color:#9aa4b0;font-weight:700">회색 점선</span>=아직 <b>빈 공간</b>(융합 확장 여지). 최상위권일수록 하나의 주제를 여러 교과에서 다각도로 본 '융합형'을 선호합니다.</div>
+      <div class="desc">메인 진로 키워드(<b>${esc(fm.main[0]||'—')}</b>)가 <b>서로 다른 교과</b>에서 탐구됐는지를 지도로 봅니다. <span style="color:#178055;font-weight:700">초록 실선</span>=탐구가 연결된 교과, <span style="color:#9aa4b0;font-weight:700">회색 점선</span>=아직 <b>빈 공간</b>(융합 확장 여지). 최상위권일수록 하나의 주제를 여러 교과에서 다각도로 본 '융합형'을 선호합니다.</div>
       <div style="text-align:center">${fusionSvg(fm)}</div>
       ${fm.strong.length?`<div class="note">✅ 연결된 교과: ${fm.strong.map(s=>`<b>${esc(s.group)}</b>(${s.subjects.slice(0,2).map(x=>esc(x.subject)).join(', ')} · ${s.n}회)`).join(' &nbsp;·&nbsp; ')}</div>`:''}
       ${judgeBox(judgeFusion(fm))}
@@ -552,7 +598,7 @@ function render(){
   const net=a.network;
   if(net && net.areas.length && net.keywords.length){
     h+=`<div class="card"><h2>🌌 키워드 연결 네트워크</h2>
-      <div class="desc">교과군·창체(<span style="color:#2f6f4f;font-weight:700">초록=세특</span>·<span style="color:#7a5bb0;font-weight:700">보라=창체</span>)를 노드로 두고, 진로 핵심어를 연결했습니다. <b><span style="color:#c98a3a">주황 키워드</span>=여러 교과·활동에 걸친 것</b>(중앙 배치) — 교과에서 배운 개념이 동아리·진로로 이어진 '꼬리물기·융합'을 직관적으로 보여줍니다.</div>
+      <div class="desc">교과군·창체(<span style="color:#178055;font-weight:700">초록=세특</span>·<span style="color:#3b6ea5;font-weight:700">파랑=창체</span>)를 노드로 두고, 진로 핵심어를 연결했습니다. <b><span style="color:#c9822f">주황 키워드</span>=여러 교과·활동에 걸친 것</b> — 교과에서 배운 개념이 동아리·진로로 이어진 '꼬리물기·융합'을 직관적으로 보여줍니다. 위치는 서로 겹치지 않도록 자동 배치됩니다.</div>
       <div style="text-align:center">${networkSvg(net)}</div>
       ${judgeBox(judgeNetwork(net))}
     </div>`;
