@@ -4,6 +4,9 @@ function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':
 function nm(n){return anon||blind? (n?n[0]:'')+'○○' : n}
 // 강력 블라인드: 이름·학교·대회 등 개인 특정 고유명사 마스킹(표시 단계에서만)
 let blind=false;
+// 1페이지 상담 브리핑 모드: 핵심 카드만 남기고 나머지는 DOM에서 제외(토글시 render() 재호출로 복원)
+let briefMode=false;
+const BRIEF_MATCH=['종합 총평','성적 강점맵','역량 밸런스','진로 일관성·연계'];
 function maskText(s){
   if(!blind||!s) return s;
   let out=s;
@@ -461,6 +464,7 @@ function render(){
 
   h+=`<div class="card"><h2>🧭 창체 진화 타임라인</h2><div class="desc">자율·동아리·진로 활동에서 <b>긍정적으로 평가될 요소</b>를 학년 순으로 추렸습니다. 칩=드러난 강점(리더십·심화·주도 등).</div>
     <div class="tl">${a.creativeHi.map(gr=>`<div class="yr-head">${gr.grade}학년</div>${gr.areas.map(ar=>ar.items.map(it=>`<div class="ev"><span class="k ${ar.area}">${ar.area}</span> ${it.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}<div class="t">${T(it.gist||it.text)}</div></div>`).join('')).join('')}`).join('')}</div>
+    ${p.volunteer&&p.volunteer.totalHours!=null?`<div class="note">🙋 봉사활동 총 <b>${p.volunteer.totalHours}시간</b>${p.volunteer.byGrade.length?' ('+p.volunteer.byGrade.map(g=>g.grade+'학년 '+g.hours+'시간').join('·')+')':''} — 시간만 집계(내용은 판정하지 않음, 학년 구간은 표 인식 기준 추정치).</div>`:''}
   </div>`;
 
   // 2.5) 세특 리뷰 — 정독 포인트 (원문 요약, 어디에 집중해 읽을지)
@@ -595,19 +599,48 @@ const SECTIONS=[
 window.__secOpen=window.__secOpen||{};
 function groupSections(){
   const app=$('#app'); const hero=app.querySelector(':scope > .hero');
-  const cards=[...app.querySelectorAll(':scope > .card')];
+  let cards=[...app.querySelectorAll(':scope > .card')];
+  if(briefMode) cards=cards.filter(c=>{const t=c.querySelector('h2')?.textContent||''; return BRIEF_MATCH.some(m=>t.includes(m));});
   const frag=document.createDocumentFragment(); if(hero) frag.appendChild(hero);
+  if(briefMode){
+    const banner=document.createElement('div'); banner.className='brief-banner';
+    banner.textContent='🖨️ 브리핑 모드 — 상담용 핵심 카드만 표시 중입니다. 버튼을 다시 누르면 전체 보기로 돌아갑니다.';
+    frag.appendChild(banner);
+  }
+  // 카드 바로가기 목차: 섹션과 같은 순서로 그룹핑, 클릭시 해당 섹션을 열고 스크롤(브리핑 모드에선 생략)
+  let tocPanel=null, toc=null;
+  if(!briefMode){
+    toc=document.createElement('div'); toc.className='toc';
+    toc.innerHTML='<button class="toc-toggle" type="button">📑 목차</button><div class="toc-panel"></div>';
+    tocPanel=toc.querySelector('.toc-panel');
+    toc.querySelector('.toc-toggle').onclick=()=>toc.classList.toggle('open');
+    frag.appendChild(toc);
+  }
   const assigned=new Set();
   SECTIONS.forEach(sec=>{
     const mine=cards.filter(c=>{const t=c.querySelector('h2')?.textContent||''; return sec.match.some(m=>t.includes(m));});
     if(!mine.length) return; mine.forEach(c=>assigned.add(c));
-    const open=(sec.key in window.__secOpen)?window.__secOpen[sec.key]:sec.open;
+    const open=briefMode?true:((sec.key in window.__secOpen)?window.__secOpen[sec.key]:sec.open);
     const wrap=document.createElement('section'); wrap.className='sec'+(open?' open':'');
     const head=document.createElement('div'); head.className='sec-h';
     head.innerHTML=`<span>${sec.title}</span><span class="sec-cnt">${mine.length}</span><span class="sec-caret">▾</span>`;
     const body=document.createElement('div'); body.className='sec-body'; mine.forEach(c=>body.appendChild(c));
     head.onclick=()=>{ window.__secOpen[sec.key]=wrap.classList.toggle('open'); };
     wrap.appendChild(head); wrap.appendChild(body); frag.appendChild(wrap);
+    if(!tocPanel) return;
+    const gEl=document.createElement('div'); gEl.className='toc-group';
+    const gt=document.createElement('div'); gt.className='toc-gtitle'; gt.textContent=sec.title; gEl.appendChild(gt);
+    mine.forEach(c=>{
+      const label=(c.querySelector('h2')?.textContent||'').trim();
+      const b=document.createElement('button'); b.type='button'; b.className='toc-item'; b.textContent=label;
+      b.onclick=()=>{
+        if(!wrap.classList.contains('open')){ wrap.classList.add('open'); window.__secOpen[sec.key]=true; }
+        toc.classList.remove('open');
+        setTimeout(()=>c.scrollIntoView({behavior:'smooth',block:'start'}),40);
+      };
+      gEl.appendChild(b);
+    });
+    tocPanel.appendChild(gEl);
   });
   cards.filter(c=>!assigned.has(c)).forEach(c=>frag.appendChild(c)); // 미분류는 그대로 노출
   app.innerHTML=''; app.appendChild(frag);

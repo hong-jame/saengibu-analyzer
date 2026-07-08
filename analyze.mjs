@@ -258,6 +258,7 @@ export function profile(r, setName) {
     세특강점과목수: sk.reduce((a, g) => a + g.subjects.length, 0),
     세특강점총수: sk.reduce((a, g) => a + g.subjects.reduce((x, s) => x + s.items.length, 0), 0),
     공동체신호수: commTotal,
+    봉사총시간: (r.volunteer && r.volunteer.totalHours != null) ? r.volunteer.totalHours : null,
   };
 }
 
@@ -573,6 +574,7 @@ export const PROFILE_METRICS = [
   { key: '창체강점요소수', label: '창체 강점 요소수', dir: 'high', unit: '개' },
   { key: '창체총시간', label: '창체 총시간', dir: 'high', unit: '시간', lowDisc: true },
   { key: '세특강점과목수', label: '세특 강점 과목수', dir: 'high', unit: '과목', lowDisc: true },
+  { key: '봉사총시간', label: '봉사활동 총시간', dir: 'high', unit: '시간', lowDisc: true },
 ];
 
 /* 대상 프로필 vs 기준 밴드: 지표별 값/범위/방향 (판정은 하지 않음, 위치만) */

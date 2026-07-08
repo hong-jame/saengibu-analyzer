@@ -113,6 +113,18 @@ const html = `<meta charset="utf-8">
 .cd-table{border-collapse:collapse;width:100%;font-size:12.5px}
 .cd-table th{text-align:left;color:var(--sub);font-weight:600;padding:5px 8px;border-bottom:2px solid var(--line)}
 .cd-table td{padding:5px 8px;border-bottom:1px solid var(--line)}
+.lens-row{display:grid;grid-template-columns:150px 1fr 1fr;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.lens-row:first-of-type{border-top:none}
+.lens-head{font-weight:700;color:var(--accent)}
+.sc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:10px}
+.sc-card{border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;background:#fbfcfd}
+.sc-name{font-weight:700;font-size:13.5px}
+.sc-meta{font-size:11px;color:var(--sub);margin:2px 0 4px}
+.sc-radar{width:140px;margin:0 auto}
+.sc-badges{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin:6px 0 4px}
+.sc-badges .cbadge{font-size:10.5px;padding:2px 7px}
+.sc-kw{font-size:11.5px;color:var(--accent);font-weight:600}
+.sc-growth{font-size:10.5px;color:var(--sub);margin-top:2px}
 </style>
 <div class="wrap">
   <div class="topbar">
@@ -132,7 +144,10 @@ const html = `<meta charset="utf-8">
       <button id="snapSave" title="현재 분석 요약을 파일로 저장해 두었다가 다음 학기와 비교할 수 있습니다">📥 스냅샷 저장</button>
       <button id="snapCompareBtn" title="저장해 둔 스냅샷 파일을 불러와 현재와 비교합니다">🔀 스냅샷 비교</button>
       <button id="batchcsv" title="여러 학생 PDF를 한 번에 → 학생별 키워드 요약 CSV">📚 일괄 CSV</button>
+      <button id="compareBtn" title="여러 학생 PDF를 같은 진로군 렌즈로 나란히 비교합니다(최대 8명)">👯 학생 비교</button>
       <button id="dictBtn" title="판정에 쓰이는 표현 사전에 단어를 추가합니다(이 브라우저에 저장, 학생 데이터 아님)">⚙ 판정 사전</button>
+      <button id="briefBtn" title="상담·면담용 핵심 카드만 남기고 나머지는 숨깁니다(다시 누르면 전체 보기)">🖨️ 브리핑 모드</button>
+      <button id="lensBtn" title="같은 생기부를 다른 진로군 렌즈로도 분석해 나란히 비교합니다(예: 의학 vs 생명공학)">🔀 진로군 비교</button>
       <button id="dark" title="다크 모드">🌙</button>
       <button onclick="print()">인쇄</button>
     </div>
@@ -140,7 +155,22 @@ const html = `<meta charset="utf-8">
   <div id="drop" class="dropzone"><b>📄 생기부 PDF를 여기로 끌어다 놓으세요</b>클릭해서 선택할 수도 있습니다 · NEIS 출력 텍스트 PDF · 100% 브라우저에서만 처리(외부 전송 없음)</div>
   <input type="file" id="file" accept="application/pdf" style="display:none">
   <input type="file" id="batchfile" accept="application/pdf" multiple style="display:none">
+  <input type="file" id="comparefile" accept="application/pdf" multiple style="display:none">
   <input type="file" id="snapCompareFile" accept="application/json" style="display:none">
+  <div id="lensmodal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--card);border-radius:14px;max-width:520px;width:100%;padding:20px 22px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <b style="font-size:15px">🔀 진로군 비교</b>
+        <button id="lensClose" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--sub)">✕</button>
+      </div>
+      <div class="desc" style="margin-bottom:10px">같은 생기부를 <b>두 번째 진로 렌즈</b>로도 분석해 첫 번째 렌즈(현재 적용된 진로군)와 나란히 비교합니다. 학생이 진로를 고민 중일 때(예: 의학 vs 생명공학) 근거 대비를 보는 용도입니다.</div>
+      <input id="lensInput" type="text" placeholder="예: 의학, 간호, 임상, 병리" style="width:100%;margin:3px 0 8px;font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:8px">
+      <div id="lensPresets" class="ctrls" style="gap:5px;margin-bottom:12px"></div>
+      <div style="display:flex;justify-content:flex-end">
+        <button id="lensGo" style="background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600">비교하기</button>
+      </div>
+    </div>
+  </div>
   <div id="dictmodal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;padding:20px">
     <div style="background:var(--card);border-radius:14px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto;padding:20px 22px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -168,6 +198,8 @@ const html = `<meta charset="utf-8">
   </div>
   <div id="status"></div>
   <div id="snapcompare"></div>
+  <div id="lenscompare"></div>
+  <div id="studentcompare"></div>
   <div id="classdashbox"></div>
   <div id="app"></div>
   <p class="note">⚠ 모든 수치는 생기부 실측 기반(지어낸 값 없음) · 해석/판정은 하지 않으며 근거와 함께 신호만 제시 · 파일은 이 컴퓨터 브라우저에서만 열리고 어디로도 전송되지 않습니다.</p>
@@ -276,6 +308,59 @@ $$('#csv').onclick=()=>{
   setStatus('✓ CSV 저장: '+(rows.length-1)+'개 문장 ('+kws.length+'개 키워드)');
 };
 
+// ── 듀얼 진로군 비교(같은 생기부, 두 렌즈 나란히) ──
+const lensPresetBox=$$('#lensPresets');
+Object.keys(KEYWORD_SETS).forEach(nm=>{
+  const b=document.createElement('button'); b.textContent=nm; b.style.fontSize='12px'; b.style.padding='4px 9px';
+  b.onclick=()=>{ $$('#lensInput').value=KEYWORD_SETS[nm].core.join(', '); };
+  lensPresetBox.appendChild(b);
+});
+$$('#lensBtn').onclick=()=>{
+  if(!DATA.length){ setStatus('먼저 생기부 PDF를 넣어주세요.'); return; }
+  $$('#lensInput').value=''; $$('#lensmodal').style.display='flex';
+};
+$$('#lensClose').onclick=()=>{ $$('#lensmodal').style.display='none'; };
+function buildKwSetFromText(txt, fallbackName){
+  const raw=(txt||'').split(/[,·]/).map(s=>s.trim()).filter(Boolean);
+  if(!raw.length) return null;
+  return { name: fallbackName||('맞춤('+raw[0]+(raw.length>1?' 외 '+(raw.length-1):'')+')'), core: raw, related: [] };
+}
+$$('#lensGo').onclick=()=>{
+  const ksB=buildKwSetFromText($$('#lensInput').value);
+  if(!ksB){ setStatus('비교할 진로 키워드를 입력해 주세요.', true); return; }
+  const p=DATA[0].parsed;
+  const labelA=DATA[0].set, aA=DATA[0].analysis;
+  const aB=analyze(p, ksB);
+  const metric=(a,key)=>a.profile[key];
+  const radarOf=(a)=>{ const r=(a.radar||[]).find(x=>x.axis==='전공적합성'); return r?r.value:0; };
+  const rows=[
+    ['진로 핵심어 총', metric(aA,'진로핵심어총'), metric(aB,'진로핵심어총')],
+    ['진로연계 과목수', metric(aA,'진로연계과목수'), metric(aB,'진로연계과목수')],
+    ['전공적합성(레이더)', radarOf(aA), radarOf(aB)],
+    ['융합 연결 교과 수', (aA.fusion.strong||[]).length, (aB.fusion.strong||[]).length],
+    ['융합 빈 교과 수', (aA.fusion.gaps||[]).length, (aB.fusion.gaps||[]).length],
+  ];
+  const rowsHtml=rows.map(([label,vA,vB])=>{
+    const win=vA>vB?'A':vB>vA?'B':'';
+    return '<div class="lens-row"><span>'+esc(label)+'</span><span style="font-weight:'+(win==='A'?'700':'400')+';color:'+(win==='A'?'var(--accent)':'inherit')+'">'+vA+'</span><span style="font-weight:'+(win==='B'?'700':'400')+';color:'+(win==='B'?'var(--accent)':'inherit')+'">'+vB+'</span></div>';
+  }).join('');
+  const topA=(aA.thread.keywords||[]).slice(0,3).map(k=>k.keyword+'('+k.docs+'곳)').join(', ')||'—';
+  const topB=(aB.thread.keywords||[]).slice(0,3).map(k=>k.keyword+'('+k.docs+'곳)').join(', ')||'—';
+  const box=$$('#lenscompare');
+  box.innerHTML='<div class="card" style="border-color:var(--accent)">'
+    +'<button class="snap-close" onclick="document.getElementById(\\'lenscompare\\').innerHTML=\\'\\'" title="닫기">✕</button>'
+    +'<h2>🔀 진로군 비교: '+esc(labelA)+' vs '+esc(ksB.name)+'</h2>'
+    +'<div class="desc">같은 생기부를 두 진로 렌즈로 각각 분석했습니다. 진한 초록색이 그 지표에서 더 뚜렷한 쪽입니다. 판정이 아니라 근거 밀도 대비입니다.</div>'
+    +'<div class="lens-row lens-head"><span>지표</span><span>'+esc(labelA)+'</span><span>'+esc(ksB.name)+'</span></div>'
+    +rowsHtml
+    +'<div style="margin-top:10px;font-size:12.5px"><b style="color:var(--accent)">'+esc(labelA)+'</b> 상위 진로키워드: '+esc(topA)+'</div>'
+    +'<div style="font-size:12.5px;margin-top:2px"><b style="color:var(--accent)">'+esc(ksB.name)+'</b> 상위 진로키워드: '+esc(topB)+'</div>'
+    +'</div>';
+  $$('#lensmodal').style.display='none';
+  box.scrollIntoView({behavior:'smooth',block:'start'});
+  setStatus('✓ 진로군 비교 완료: '+labelA+' vs '+ksB.name);
+};
+
 // ── 학기별 스냅샷 저장/비교 — 파일 기반(브라우저에 영구저장 안 함, 교사가 직접 보관) ──
 function buildSnapshotObj(label){
   if(!DATA.length) return null;
@@ -350,6 +435,11 @@ $$('#snapCompareFile').onchange=async e=>{
 
 // ── 강력 블라인드(이름·학교·대회명 마스킹) ──
 $$('#blind').onclick=()=>{ blind=!blind; $$('#blind').classList.toggle('on',blind); if(DATA.length)render(); setStatus(blind?'🔒 강력 블라인드 ON — 이름·학교·대회명을 마스킹합니다(외부 제출용).':'강력 블라인드 OFF'); };
+$$('#briefBtn').onclick=()=>{
+  if(!DATA.length){ setStatus('먼저 생기부 PDF를 넣어주세요.'); return; }
+  briefMode=!briefMode; $$('#briefBtn').classList.toggle('on',briefMode); render();
+  setStatus(briefMode?'🖨️ 브리핑 모드 ON — 핵심 카드만 표시합니다. 이 상태로 인쇄하면 1페이지 요약이 나옵니다.':'브리핑 모드 OFF — 전체 카드로 돌아왔습니다.');
+};
 
 // ── AI 프롬프트 복사 ──
 function buildPrompt(){
@@ -440,6 +530,52 @@ $$('#batchfile').onchange=async e=>{
   $$('#classdashbox').innerHTML=classDashboardHtml(summaries);
   $$('#classdashbox').scrollIntoView({behavior:'smooth',block:'start'});
   setStatus('✓ 일괄 처리 완료: '+ok+'/'+files.length+'명 (진로군 렌즈: '+ks.name+'). CSV 다운로드 + 아래 학급 대시보드 확인.');
+  e.target.value='';
+};
+
+// ── 여러 학생 나란히 비교(같은 진로군 렌즈) ──
+function renderStudentCompare(list, lensName){
+  const box=$$('#studentcompare');
+  if(!list.length){ box.innerHTML='<div class="card"><div class="note">처리 가능한 PDF가 없었습니다(스캔본이거나 인식 실패).</div></div>'; return; }
+  const cardsHtml=list.map(({p,a})=>{
+    const nmShown=nm(p.meta.name||'(이름 미인식)');
+    const compBadges=(a.competency||[]).map(c=>'<span class="cbadge">'+esc(c.key.replace('역량',''))+' '+c.total+'</span>').join('');
+    const topKw=a.thread.keywords[0];
+    const growthLast=(a.growth&&a.growth.rows.length)?a.growth.rows[a.growth.rows.length-1]:null;
+    return '<div class="sc-card">'
+      +'<div class="sc-name">'+esc(nmShown)+'</div>'
+      +'<div class="sc-meta">'+esc((p.meta.years||[]).map(y=>y.grade+'학년').join('·'))+' · 평균 '+(a.profile.전과목평균등급==null?'-':a.profile.전과목평균등급)+'등급</div>'
+      +'<div class="sc-radar">'+radarSvg(a.radar)+'</div>'
+      +'<div class="sc-badges">'+compBadges+'</div>'
+      +'<div class="sc-kw">'+(topKw?esc(topKw.keyword)+'('+topKw.docs+'곳'+(topKw.fusion?'·융합':'')+')':'진로 핵심어 없음')+'</div>'
+      +(growthLast?'<div class="sc-growth">탐구 깊이 '+esc(growthLast.band)+'</div>':'')
+      +'</div>';
+  }).join('');
+  box.innerHTML='<div class="card" style="border-color:var(--accent)">'
+    +'<button class="snap-close" onclick="document.getElementById(\\'studentcompare\\').innerHTML=\\'\\'" title="닫기">✕</button>'
+    +'<h2>👯 학생 비교 ('+list.length+'명) <span style="font-size:12px;color:var(--sub);font-weight:400">진로군 렌즈: '+esc(lensName)+'</span></h2>'
+    +'<div class="desc">같은 진로군 렌즈로 여러 학생을 나란히 봅니다. 비슷한 계열 학생들을 상담 준비 시 한눈에 비교하는 용도입니다(판정 아님).</div>'
+    +'<div class="sc-grid">'+cardsHtml+'</div>'
+    +'</div>';
+  box.scrollIntoView({behavior:'smooth',block:'start'});
+}
+$$('#compareBtn').onclick=()=>$$('#comparefile').click();
+$$('#comparefile').onchange=async e=>{
+  const files=[...e.target.files]; if(!files.length) return;
+  if(files.length>8){ setStatus('한 번에 최대 8명까지 비교할 수 있습니다.', true); e.target.value=''; return; }
+  const ks=currentKwSet();
+  const list=[];
+  for(let i=0;i<files.length;i++){ const f=files[i];
+    setStatus('👯 학생 비교 처리 중… '+(i+1)+'/'+files.length+' — '+f.name);
+    try{
+      const rich=await extractRichFromBuffer(await f.arrayBuffer(), pdfjsLib);
+      if(rich.reduce((a,pg)=>a+pg.lines.join('').length,0)<300) continue;
+      const p=parse(rich); list.push({p, a:analyze(p,ks)});
+    }catch(err){}
+    await new Promise(r=>setTimeout(r,0));
+  }
+  renderStudentCompare(list, ks.name);
+  setStatus('✓ 학생 비교 완료: '+list.length+'/'+files.length+'명 (진로군 렌즈: '+ks.name+')');
   e.target.value='';
 };
 

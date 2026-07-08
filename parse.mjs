@@ -285,6 +285,43 @@ function parseSubjects(rich) {
   return { scores, details };
 }
 
+/* ── 봉사활동실적(시간만) ── 학년당 '누계시간' 열의 최댓값으로 총시간 산출.
+   구양식은 3년 내내 연속 누계, 신양식은 학년마다 리셋 — 어느 쪽인지 자동판별(직전 누계보다 작으면 리셋으로 간주). */
+function parseVolunteer(rich) {
+  const startPage = rich.findIndex(pg => pg.lines.some(l => /^봉\s*사\s*활\s*동\s*실\s*적/.test(l.trim())));
+  if (startPage < 0) return { totalHours: null, byGrade: [] };
+  const byGrade = {};
+  let curGrade = null;
+  for (let pi = startPage; pi < rich.length; pi++) {
+    const pg = rich[pi];
+    const hdr = reconLinesY(pg.tokens).find(r => /^봉\s*사\s*활\s*동\s*실\s*적/.test(r.s.trim()));
+    const nextSec = reconLinesY(pg.tokens).find(r => /^\d+\.\s*교과학습발달상황/.test(r.s));
+    const yTop = (pi === startPage && hdr) ? hdr.y : Infinity;
+    const yBot = nextSec ? nextSec.y : -Infinity;
+    const bnds = (pg.hlines || []).filter(h => h.x0 < 55 && h.y < yTop && h.y > yBot).map(h => h.y).sort((a, b) => b - a);
+    const digits = pg.tokens.filter(t => t.x < 55 && /^[1-3]$/.test(t.s) && t.y < yTop && t.y > yBot);
+    const gradeAt = y => { let top = Infinity, bot = -Infinity; for (const b of bnds) { if (b > y) top = Math.min(top, b); else bot = Math.max(bot, b); } const d = digits.find(t => t.y < top && t.y > bot); return d ? +d.s : null; };
+    const rows = reconLinesY(pg.tokens, 55).filter(r => !isFooter(r.s) && r.y < yTop && r.y > yBot);
+    for (const row of rows) {
+      const g = gradeAt(row.y);
+      if (g != null) curGrade = g;
+      const m = row.s.match(/(\d{1,4})\s+(\d{1,4})\s*$/);
+      if (m && curGrade != null) (byGrade[curGrade] = byGrade[curGrade] || []).push(+m[2]);
+    }
+    if (nextSec) break;
+  }
+  const grades = Object.keys(byGrade).map(Number).sort((a, b) => a - b);
+  let running = 0; const perGrade = [];
+  grades.forEach(g => {
+    const groupMax = Math.max(...byGrade[g]);
+    let hours;
+    if (groupMax > running) { hours = groupMax - running; running = groupMax; }
+    else { hours = groupMax; running += groupMax; }
+    perGrade.push({ grade: g, hours });
+  });
+  return { totalHours: grades.length ? running : null, byGrade: perGrade };
+}
+
 /* ── 8. 행동특성 및 종합의견 (학년은 Y밴드) ── */
 function parseBehavior(rich) {
   const startPage = rich.findIndex(pg => pg.lines.some(l => /^\d+\.\s*행동특성\s*및\s*종합의견/.test(l)));
@@ -323,6 +360,7 @@ export function parse(rich) {
     creative: parseCreative(rich, lines),
     ...subj,
     behavior: parseBehavior(rich),
+    volunteer: parseVolunteer(rich),
     scale,
   };
 }
