@@ -94,6 +94,25 @@ const html = `<meta charset="utf-8">
 #status.err{color:#c0392b}
 #applyKw{white-space:nowrap;font-weight:600}
 #applyKw.dirty{background:var(--warm);color:#fff;border-color:var(--warm)}
+.snap-close{float:right;border:none;background:none;font-size:16px;cursor:pointer;color:var(--sub)}
+.snap-row{display:grid;grid-template-columns:150px 1fr 40px 1fr;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.snap-row:first-of-type{border-top:none}
+.snap-arrow{text-align:center;color:var(--sub)}
+.snap-val{font-weight:700}
+.snap-val.up{color:#2f8f5f}
+.snap-val.down{color:#c0392b}
+.snap-new{display:inline-block;background:var(--soft);color:var(--accent);border-radius:9px;padding:1px 8px;font-size:12px;margin:2px 4px 0 0}
+.cd-hist{display:flex;align-items:flex-end;gap:10px;height:110px;padding:8px 4px 0}
+.cd-bar-wrap{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1;height:100%}
+.cd-bar{width:26px;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+.cd-bar-label{font-size:10px;color:var(--sub);margin-top:4px}
+.cd-bar-n{font-size:11px;font-weight:700;color:var(--accent)}
+.cd-wrow{display:grid;grid-template-columns:90px 1fr 44px;gap:8px;align-items:center;margin:4px 0;font-size:12.5px}
+.cd-wtrack{background:#e9edf1;border-radius:6px;height:14px;overflow:hidden}
+.cd-wfill{display:block;height:100%;background:var(--accent2);border-radius:6px;min-width:2px}
+.cd-table{border-collapse:collapse;width:100%;font-size:12.5px}
+.cd-table th{text-align:left;color:var(--sub);font-weight:600;padding:5px 8px;border-bottom:2px solid var(--line)}
+.cd-table td{padding:5px 8px;border-bottom:1px solid var(--line)}
 </style>
 <div class="wrap">
   <div class="topbar">
@@ -110,7 +129,10 @@ const html = `<meta charset="utf-8">
       <button id="blind" title="이름·학교·대회명 등 고유명사까지 마스킹(외부 제출용)">🔒 블라인드</button>
       <button id="prompt" title="분석 데이터를 AI 프롬프트로 클립보드에 복사">🤖 프롬프트 복사</button>
       <button id="csv" title="키워드별 원문 문장을 CSV로 내려받기">CSV</button>
+      <button id="snapSave" title="현재 분석 요약을 파일로 저장해 두었다가 다음 학기와 비교할 수 있습니다">📥 스냅샷 저장</button>
+      <button id="snapCompareBtn" title="저장해 둔 스냅샷 파일을 불러와 현재와 비교합니다">🔀 스냅샷 비교</button>
       <button id="batchcsv" title="여러 학생 PDF를 한 번에 → 학생별 키워드 요약 CSV">📚 일괄 CSV</button>
+      <button id="dictBtn" title="판정에 쓰이는 표현 사전에 단어를 추가합니다(이 브라우저에 저장, 학생 데이터 아님)">⚙ 판정 사전</button>
       <button id="dark" title="다크 모드">🌙</button>
       <button onclick="print()">인쇄</button>
     </div>
@@ -118,7 +140,35 @@ const html = `<meta charset="utf-8">
   <div id="drop" class="dropzone"><b>📄 생기부 PDF를 여기로 끌어다 놓으세요</b>클릭해서 선택할 수도 있습니다 · NEIS 출력 텍스트 PDF · 100% 브라우저에서만 처리(외부 전송 없음)</div>
   <input type="file" id="file" accept="application/pdf" style="display:none">
   <input type="file" id="batchfile" accept="application/pdf" multiple style="display:none">
+  <input type="file" id="snapCompareFile" accept="application/json" style="display:none">
+  <div id="dictmodal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;padding:20px">
+    <div style="background:var(--card);border-radius:14px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto;padding:20px 22px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <b style="font-size:15px">⚙ 판정 사전 편집</b>
+        <button id="dictClose" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--sub)">✕</button>
+      </div>
+      <div class="desc" style="margin-bottom:12px">실사용 중 놓치는 표현이 있으면 여기에 <b>추가</b>하세요(기존 표현은 그대로 유지, 삭제 아님). <b>이 브라우저에만 저장</b>되며(단어만 저장, 학생 데이터 아님) 다음에 열 때도 자동 적용됩니다. 쉼표로 구분해서 입력하세요.</div>
+      <label style="font-size:12px;color:var(--sub)">강점 표현(강한) — 예: 돋보임·뛰어남 계열</label>
+      <textarea id="dict_strong" rows="2" style="width:100%;margin:3px 0 10px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></textarea>
+      <label style="font-size:12px;color:var(--sub)">강점 표현(보통) — 예: 성실·적극 계열</label>
+      <textarea id="dict_weak" rows="2" style="width:100%;margin:3px 0 10px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></textarea>
+      <label style="font-size:12px;color:var(--sub)">지적 호기심·동기 표현 추가</label>
+      <textarea id="dict_motive" rows="2" style="width:100%;margin:3px 0 10px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></textarea>
+      <label style="font-size:12px;color:var(--sub)">외부자료 확장 표현 추가(논문·서적·다큐 등)</label>
+      <textarea id="dict_external" rows="2" style="width:100%;margin:3px 0 10px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></textarea>
+      <label style="font-size:12px;color:var(--sub)">공동체·협력 표현 추가</label>
+      <textarea id="dict_community" rows="2" style="width:100%;margin:3px 0 10px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></textarea>
+      <label style="font-size:12px;color:var(--sub)">주도성 행위 동사 추가</label>
+      <textarea id="dict_actionVerb" rows="2" style="width:100%;margin:3px 0 14px;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="dictReset">기본값으로</button>
+        <button id="dictSave" style="background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600">저장 및 적용</button>
+      </div>
+    </div>
+  </div>
   <div id="status"></div>
+  <div id="snapcompare"></div>
+  <div id="classdashbox"></div>
   <div id="app"></div>
   <p class="note">⚠ 모든 수치는 생기부 실측 기반(지어낸 값 없음) · 해석/판정은 하지 않으며 근거와 함께 신호만 제시 · 파일은 이 컴퓨터 브라우저에서만 열리고 어디로도 전송되지 않습니다.</p>
 </div>
@@ -226,6 +276,78 @@ $$('#csv').onclick=()=>{
   setStatus('✓ CSV 저장: '+(rows.length-1)+'개 문장 ('+kws.length+'개 키워드)');
 };
 
+// ── 학기별 스냅샷 저장/비교 — 파일 기반(브라우저에 영구저장 안 함, 교사가 직접 보관) ──
+function buildSnapshotObj(label){
+  if(!DATA.length) return null;
+  const p=DATA[0].parsed, a=DATA[0].analysis;
+  const lastGrowth=(a.growth&&a.growth.rows.length)?a.growth.rows[a.growth.rows.length-1]:null;
+  return {
+    version:1, savedAt:new Date().toISOString(), label:label||'',
+    name:p.meta.name, scale:p.scale, set:DATA[0].set,
+    profile:a.profile,
+    threadKeywords:(a.thread.keywords||[]).map(k=>({keyword:k.keyword,docs:k.docs,total:k.total,grades:k.grades})),
+    competency:(a.competency||[]).map(c=>({key:c.key,total:c.total})),
+    growth:lastGrowth?{grade:lastGrowth.grade,kwTotal:lastGrowth.kwTotal,band:lastGrowth.band,tierLabel:lastGrowth.tierLabel,breadth:lastGrowth.breadth}:null,
+  };
+}
+$$('#snapSave').onclick=()=>{
+  if(!DATA.length){ setStatus('먼저 생기부 PDF를 넣어주세요.'); return; }
+  const label=window.prompt('이 스냅샷의 라벨을 입력하세요 (예: 1학년 2학기)','');
+  if(label===null) return;
+  const snap=buildSnapshotObj(label);
+  const json=JSON.stringify(snap,null,1);
+  const url=URL.createObjectURL(new Blob([json],{type:'application/json;charset=utf-8'}));
+  const aEl=document.createElement('a'); aEl.href=url; aEl.download=(snap.name||'생기부')+'_'+(label||'스냅샷')+'.json'; aEl.click(); URL.revokeObjectURL(url);
+  setStatus('✓ 스냅샷 저장됨: '+(label||'(라벨 없음)')+' — 파일로 보관해 두었다가 다음 학기 비교에 쓰세요.');
+};
+const PROFILE_LABELS=[['전과목평균등급','전과목 평균등급','low'],['국영수사과평균','국영수사과 평균','low'],['성취도A수','성취도 A 과목수','high'],['진로핵심어총','진로 핵심어 총','high'],['진로연계과목수','진로연계 과목수','high'],['공동체신호수','공동체역량 신호','high'],['세특강점총수','세특 강점 총수','high']];
+function renderSnapshotCompare(old,cur){
+  const box=$$('#snapcompare');
+  if(old.name && cur.name && old.name!==cur.name){
+    box.innerHTML='<div class="card"><button class="snap-close" onclick="document.getElementById(\\'snapcompare\\').innerHTML=\\'\\'">✕</button><h2>⚠ 다른 학생입니다</h2><div class="desc">스냅샷('+esc(old.name)+')과 현재 분석 대상('+esc(cur.name)+')의 이름이 다릅니다. 같은 학생의 스냅샷인지 확인해 주세요.</div></div>';
+    return;
+  }
+  const rows=PROFILE_LABELS.map(([key,label,dir])=>{
+    const ov=old.profile?old.profile[key]:null, cv=cur.profile?cur.profile[key]:null;
+    if(ov==null||cv==null) return '';
+    const better=dir==='low'?cv<ov:cv>ov, worse=dir==='low'?cv>ov:cv<ov;
+    const cls=better?'up':worse?'down':'';
+    const arrow=cv>ov?'↑':cv<ov?'↓':'→';
+    return '<div class="snap-row"><span>'+esc(label)+'</span><span class="snap-val">'+ov+'</span><span class="snap-arrow">'+arrow+'</span><span class="snap-val '+cls+'">'+cv+'</span></div>';
+  }).join('');
+  const oldKw=new Set((old.threadKeywords||[]).map(k=>k.keyword));
+  const newKw=(cur.threadKeywords||[]).filter(k=>!oldKw.has(k.keyword)).map(k=>k.keyword);
+  const oldComp={}; (old.competency||[]).forEach(c=>oldComp[c.key]=c.total);
+  const compRows=(cur.competency||[]).map(c=>{
+    const ov=oldComp[c.key]||0; const arrow=c.total>ov?'↑':c.total<ov?'↓':'→'; const cls=c.total>ov?'up':c.total<ov?'down':'';
+    return '<div class="snap-row"><span>'+esc(c.key)+'</span><span class="snap-val">'+ov+'</span><span class="snap-arrow">'+arrow+'</span><span class="snap-val '+cls+'">'+c.total+'</span></div>';
+  }).join('');
+  const newKwHtml=newKw.length?('<div style="margin-top:10px"><span style="font-weight:700;font-size:13px;color:var(--accent)">새로 등장한 진로 키워드</span><div style="margin-top:4px">'+newKw.map(k=>'<span class="snap-new">'+esc(k)+'</span>').join('')+'</div></div>'):'';
+  box.innerHTML='<div class="card" style="border-color:var(--accent)">'
+    +'<button class="snap-close" onclick="document.getElementById(\\'snapcompare\\').innerHTML=\\'\\'" title="닫기">✕</button>'
+    +'<h2>🔀 스냅샷 비교: '+esc(old.label||'이전')+' → '+esc(cur.label||'현재')+'</h2>'
+    +'<div class="desc">'+esc(old.name||'')+' 학생의 두 시점 분석을 비교합니다. 저장 시각: '+(old.savedAt?new Date(old.savedAt).toLocaleString('ko-KR'):'-')+' → 지금.</div>'
+    +'<div style="font-weight:700;font-size:13px;margin:8px 0 2px;color:var(--accent)">성적·활동 지표</div>'
+    +(rows||'<div class="note">비교 가능한 지표가 없습니다.</div>')
+    +'<div style="font-weight:700;font-size:13px;margin:12px 0 2px;color:var(--accent)">3대 역량 신호</div>'
+    +compRows
+    +newKwHtml
+    +'</div>';
+  box.scrollIntoView({behavior:'smooth',block:'start'});
+}
+$$('#snapCompareBtn').onclick=()=>$$('#snapCompareFile').click();
+$$('#snapCompareFile').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  try{
+    const old=JSON.parse(await f.text());
+    if(!DATA.length){ setStatus('비교하려면 먼저 현재 생기부 PDF를 넣어주세요.', true); e.target.value=''; return; }
+    const cur=buildSnapshotObj('현재');
+    renderSnapshotCompare(old,cur);
+    setStatus('✓ 스냅샷 비교 완료: '+(old.label||'이전')+' vs 현재');
+  }catch(err){ setStatus('스냅샷 파일을 읽을 수 없습니다: '+err.message, true); }
+  e.target.value='';
+};
+
 // ── 강력 블라인드(이름·학교·대회명 마스킹) ──
 $$('#blind').onclick=()=>{ blind=!blind; $$('#blind').classList.toggle('on',blind); if(DATA.length)render(); setStatus(blind?'🔒 강력 블라인드 ON — 이름·학교·대회명을 마스킹합니다(외부 제출용).':'강력 블라인드 OFF'); };
 
@@ -261,12 +383,41 @@ $$('#prompt').onclick=async()=>{
   catch(e){ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); setStatus('✓ 프롬프트 복사됨 — AI 도구에 붙여넣기하세요.');}catch(_){ setStatus('복사 실패 — 브라우저 권한을 확인하세요.',true);} document.body.removeChild(ta); }
 };
 
-// ── 다중 파일 일괄 처리 → 학생별 키워드 요약 CSV(연구부 취합·학기말 업무용) ──
+// ── 다중 파일 일괄 처리 → 학생별 키워드 요약 CSV + 학급 개관 대시보드(연구부 취합·학기말 업무용) ──
+function classDashboardHtml(summaries){
+  if(!summaries.length) return '';
+  const buckets={}; summaries.forEach(s=>{ if(s.avg==null) return; const b=Math.floor(s.avg); buckets[b]=(buckets[b]||0)+1; });
+  const maxScale=Math.max(5,...summaries.map(s=>s.scale||9));
+  const bucketKeys=[]; for(let i=1;i<=maxScale;i++) bucketKeys.push(i);
+  const maxCount=Math.max(1,...Object.values(buckets));
+  const histBars=bucketKeys.map(k=>{
+    const n=buckets[k]||0, hpx=Math.round(n/maxCount*80);
+    return '<div class="cd-bar-wrap"><div class="cd-bar-n">'+(n||'')+'</div><div class="cd-bar" style="height:'+Math.max(hpx,2)+'px" title="'+n+'명"></div><div class="cd-bar-label">'+k+'점대</div></div>';
+  }).join('');
+  const wordCount={}; summaries.forEach(s=>(s.autoTop||[]).forEach(w=>{ wordCount[w]=(wordCount[w]||0)+1; }));
+  const topWords=Object.entries(wordCount).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const maxW=Math.max(1,...topWords.map(w=>w[1]));
+  const wordBars=topWords.map(([w,n])=>'<div class="cd-wrow"><span>'+esc(w)+'</span><span class="cd-wtrack"><span class="cd-wfill" style="width:'+Math.round(n/maxW*100)+'%"></span></span><span>'+n+'명</span></div>').join('');
+  const sorted=summaries.slice().sort((a,b)=>(a.avg==null?99:a.avg)-(b.avg==null?99:b.avg));
+  const tableRows=sorted.map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(s.grades||'')+'</td><td>'+(s.avg==null?'-':s.avg)+'</td><td>'+(s.kwTotal==null?'-':s.kwTotal)+'</td><td>'+(s.community==null?'-':s.community)+'</td><td>'+esc((s.autoTop||[]).slice(0,3).join(', '))+'</td></tr>').join('');
+  return '<div class="card" style="border-color:var(--accent)">'
+    +'<button class="snap-close" onclick="document.getElementById(\\'classdashbox\\').innerHTML=\\'\\'" title="닫기">✕</button>'
+    +'<h2>👥 학급 개관 대시보드 ('+summaries.length+'명)</h2>'
+    +'<div class="desc">일괄 처리한 '+summaries.length+'명의 요약입니다. 같은 진로군 렌즈를 전원에 적용했습니다(현재 키워드 입력창 기준). 개인 CSV도 함께 다운로드됩니다.</div>'
+    +'<div style="font-weight:700;font-size:13px;margin:10px 0 2px;color:var(--accent)">전과목 평균등급 분포</div>'
+    +'<div class="cd-hist">'+histBars+'</div>'
+    +'<div style="font-weight:700;font-size:13px;margin:14px 0 2px;color:var(--accent)">학급 공통 관심 키워드(자동추천 교차빈도)</div>'
+    +(wordBars||'<div class="note">데이터가 부족합니다.</div>')
+    +'<div style="font-weight:700;font-size:13px;margin:14px 0 2px;color:var(--accent)">학생별 요약(평균등급순)</div>'
+    +'<div style="overflow-x:auto"><table class="cd-table"><tr><th>이름</th><th>학년</th><th>평균등급</th><th>진로핵심어</th><th>공동체신호</th><th>주요 키워드</th></tr>'+tableRows+'</table></div>'
+    +'</div>';
+}
 $$('#batchcsv').onclick=()=>$$('#batchfile').click();
 $$('#batchfile').onchange=async e=>{
   const files=[...e.target.files]; if(!files.length) return;
   const ks=currentKwSet();
   const rows=[['이름','학년','전과목평균등급','국영수사과','최종학기','성취도A','진로핵심어총','진로연계과목','공동체신호','자동키워드Top5','진로연계키워드']];
+  const summaries=[];
   let ok=0;
   for(let i=0;i<files.length;i++){ const f=files[i];
     setStatus('📚 일괄 처리 중… '+(i+1)+'/'+files.length+' — '+f.name);
@@ -277,6 +428,8 @@ $$('#batchfile').onchange=async e=>{
       rows.push([p.meta.name||f.name, [...new Set(p.scores.map(s=>s.grade))].sort().join('·'),
         pf.전과목평균등급, pf.국영수사과평균, pf.최종학기평균, pf.성취도A수, pf.진로핵심어총, pf.진로연계과목수, pf.공동체신호수,
         a.auto.slice(0,5).map(k=>k.word).join(' '), a.thread.keywords.map(k=>k.keyword).join(' ')]);
+      summaries.push({name:p.meta.name||f.name, grades:[...new Set(p.scores.map(s=>s.grade))].sort().join('·'), scale:p.scale,
+        avg:pf.전과목평균등급, kwTotal:pf.진로핵심어총, community:pf.공동체신호수, autoTop:a.auto.slice(0,5).map(k=>k.word)});
       ok++;
     }catch(err){ rows.push([f.name,'(처리 실패: '+err.message+')']); }
     await new Promise(r=>setTimeout(r,0));
@@ -284,8 +437,35 @@ $$('#batchfile').onchange=async e=>{
   const csv=String.fromCharCode(0xFEFF)+rows.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(',')).join('\\r\\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const aEl=document.createElement('a'); aEl.href=url; aEl.download='학급_생기부_키워드요약_'+files.length+'명.csv'; aEl.click(); URL.revokeObjectURL(url);
-  setStatus('✓ 일괄 CSV 저장: '+ok+'/'+files.length+'명 처리 (진로군 렌즈: '+ks.name+'). 단일 분석 화면은 그대로입니다.');
+  $$('#classdashbox').innerHTML=classDashboardHtml(summaries);
+  $$('#classdashbox').scrollIntoView({behavior:'smooth',block:'start'});
+  setStatus('✓ 일괄 처리 완료: '+ok+'/'+files.length+'명 (진로군 렌즈: '+ks.name+'). CSV 다운로드 + 아래 학급 대시보드 확인.');
   e.target.value='';
+};
+
+// ── 판정 사전 편집(사용자 피드백 루프) — localStorage에 '단어'만 저장(학생 데이터 아님, 영구저장 안전) ──
+const DICT_FIELDS=['strong','weak','motive','external','community','actionVerb'];
+function loadCustomDict(){ try{ const raw=localStorage.getItem('sgb_customdict'); return raw?JSON.parse(raw):{}; }catch(e){ return {}; } }
+function splitList(s){ return (s||'').split(/[,\\n]/).map(x=>x.trim()).filter(Boolean); }
+function fillDictForm(custom){ DICT_FIELDS.forEach(k=>{ const el=$$('#dict_'+k); if(el) el.value=(custom[k]||[]).join(', '); }); }
+applyCustomDict(loadCustomDict());   // 저장된 사전을 페이지 로드 시 즉시 적용(이후 모든 분석에 반영, restoreSession보다 먼저 실행돼야 함)
+$$('#dictBtn').onclick=()=>{ fillDictForm(loadCustomDict()); $$('#dictmodal').style.display='flex'; };
+$$('#dictClose').onclick=()=>{ $$('#dictmodal').style.display='none'; };
+$$('#dictSave').onclick=()=>{
+  const custom={}; DICT_FIELDS.forEach(k=>{ const v=splitList($$('#dict_'+k).value); if(v.length) custom[k]=v; });
+  try{ localStorage.setItem('sgb_customdict', JSON.stringify(custom)); }catch(e){}
+  applyCustomDict(custom);
+  $$('#dictmodal').style.display='none';
+  if(DATA.length){ const ks=currentKwSet(); DATA[0].analysis=analyze(DATA[0].parsed, ks); render(); }
+  setStatus('✓ 판정 사전이 저장·적용됐습니다.');
+};
+$$('#dictReset').onclick=()=>{
+  if(!window.confirm('추가한 표현을 모두 지우고 기본값으로 되돌릴까요?')) return;
+  try{ localStorage.removeItem('sgb_customdict'); }catch(e){}
+  applyCustomDict({});
+  fillDictForm({});
+  if(DATA.length){ const ks=currentKwSet(); DATA[0].analysis=analyze(DATA[0].parsed, ks); render(); }
+  setStatus('✓ 판정 사전을 기본값으로 되돌렸습니다.');
 };
 
 // ── 세션 임시 저장(새로고침 복구) — sessionStorage는 로컬 전용, 탭 닫으면 삭제 ──

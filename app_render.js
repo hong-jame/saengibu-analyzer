@@ -200,7 +200,50 @@ function judgeSunburst(sb){
   if(setuk){const t=[...setuk.children].sort((x,y)=>y.chars-x.chars).slice(0,2).map(c=>c.name); topSub=` 세특 중에서는 ${t.join('·')} 비중이 커 학업 기록이 뼈대를 이룹니다.`;}
   return {read:`생기부 텍스트 비중은 ${parts}입니다.${topSub}`, logic:'면적=글자수 비중(활동의 양적 비중이며 질 평가는 아닙니다). 안=영역, 중간=과목/활동, 바깥=대표 키워드.'};
 }
+function judgeFusion(fm){
+  if(!fm||!fm.nodes.length) return null;
+  const main=fm.main[0]||'진로 핵심어';
+  let read;
+  if(fm.strong.length && fm.gaps.length) read=`'${main}' 탐구가 ${fm.strong.slice(0,3).map(s=>s.group).join('·')} 교과에서 확인됩니다. ${fm.gaps.map(g=>g.group).join('·')}에는 아직 연결이 없어, 이 교과 수행평가에 같은 주제를 접목하면 '여러 교과에서 다각도로 탐구한' 융합형 인상을 더할 수 있습니다.`;
+  else if(fm.strong.length) read=`'${main}' 관련 탐구가 국·영·수·사·과 주요 교과에 고루 연결되어 있어 융합 폭이 넓은 편입니다.`;
+  else read=`아직 교과별 연결이 뚜렷하지 않습니다. 세특에 진로 키워드가 드러나는 교과가 늘면 융합 지도가 채워집니다.`;
+  return {read, logic:'노드=교과군, 실선(초록)=탐구가 연결된 교과, 점선(회색)=핵심어가 등장하지 않은 교과(빈 공간). 국·영·수·사·과 5개 기준으로 봅니다.'};
+}
+function judgeNetwork(net){
+  if(!net||!net.keywords.length) return null;
+  const fusion=net.keywords.filter(k=>k.areas.length>1).sort((a,b)=>b.areas.length-a.areas.length);
+  const read = fusion.length
+    ? `'${fusion[0].k}' 등 ${fusion.length}개 키워드가 서로 다른 교과·활동에 걸쳐 등장합니다(주황 노드). 한 개념이 교과 수업→동아리→진로활동으로 이어지는 '꼬리물기' 탐구의 근거입니다.`
+    : `키워드 대부분이 한 교과·활동에만 나타나 아직 활동 간 연결(꼬리물기)은 뚜렷하지 않습니다. 같은 주제를 동아리나 진로활동으로 확장해 보면 연결선이 늘어납니다.`;
+  return {read, logic:'선(엣지)=교과·활동에 그 키워드가 등장했다는 뜻. 주황 노드=2곳 이상에 걸친 키워드(융합), 회색=한 곳에서만 등장.'};
+}
+function judgeActivityHeat(ah){
+  if(!ah||!ah.grades.length) return null;
+  if(ah.grades.length<2) return {read:'아직 한 학년만 있어 학년 간 밀도 변화는 비교하기 이릅니다.', logic:'각 칸=학년×영역(자율·동아리·진로·세특)에서 진로 핵심어가 등장한 횟수. 짙을수록 그 학년·영역에 전공 탐구가 몰려 있다는 뜻입니다.'};
+  const totals=ah.grades.map(g=>ah.rows.reduce((s,r)=>s+(r.cells.find(c=>c.grade===g)?.n||0),0));
+  const f=totals[0], l=totals[totals.length-1];
+  const read = l>=f*1.2 ? `학년이 오를수록 전체 색이 짙어져(${f}→${l}회) 진로 관련 활동이 여러 영역에서 꾸준히 확대됐습니다.`
+    : l<=f*0.8 ? `초반 학년에 진로 활동이 몰려 있고(${f}회) 최근으로 갈수록 옅어졌습니다(${l}회). 최근 학년 기록이 아직 반영 전일 수도 있습니다.`
+    : `학년별 밀도가 ${f}→${l}회로 비슷한 수준을 유지합니다.`;
+  return {read, logic:'각 칸=학년×영역(자율·동아리·진로·세특)에서 진로 핵심어가 등장한 횟수, 색 농도로 표현. 짙을수록 그 학년·영역에 전공 탐구가 몰려 있다는 뜻입니다.'};
+}
 function judgeBox(j){ return j?`<div class="judge"><div class="judge-read"><b>📌 이렇게 읽습니다</b> · ${esc(j.read)}</div><div class="judge-logic">⚙ 산출 논리: ${esc(j.logic)}</div></div>`:''; }
+// 종합 총평: 개별 판단을 모아 상단에 한 문단으로(가장 핵심적인 강점·보완점만 선별)
+function overallSummary(a){
+  const parts=[];
+  const comp=(a.competency||[]).slice().sort((x,y)=>y.total-x.total);
+  if(comp.length) parts.push(`${comp[0].label}(${comp[0].total}회)이 가장 두드러집니다`);
+  const top=a.thread&&a.thread.keywords[0];
+  if(top) parts.push(`'${top.keyword}' 진로 탐구가 ${top.docs}곳에서 확인되며${top.fusion?' 교과·활동을 넘나드는 융합형입니다':''}`);
+  if(a.growth&&a.growth.multi){const f=a.growth.rows[0],l=a.growth.rows[a.growth.rows.length-1];
+    parts.push(l.kwTotal>=f.kwTotal*1.2?`학년이 오르며 전공 탐구가 뚜렷이 깊어졌습니다`:l.kwTotal<=f.kwTotal*0.8?`초반에 비해 최근 학년의 진로 몰입도가 낮아진 편입니다`:`학년별 진로 몰입도는 꾸준한 편입니다`);
+  }
+  if(a.fusion&&a.fusion.gaps.length) parts.push(`${a.fusion.gaps.slice(0,2).map(g=>g.group).join('·')} 교과와의 연결은 아직 비어 있어 보완 여지가 있습니다`);
+  const bal=a.balance;
+  if(bal&&!bal.balanced&&bal.alerts.length) parts.push(bal.alerts[0].text.replace(/\.$/,''));
+  if(!parts.length) return '';
+  return parts.join('. ')+'.';
+}
 // 교과 융합 지도(허브-스포크): 연결=초록 실선, 빈 공간=회색 점선
 function fusionSvg(fm){
   const nodes=fm.nodes,N=nodes.length; if(!N) return '';
@@ -314,6 +357,15 @@ function render(){
     <div class="narr">${esc(narrative)}</div>
   </div>`;
 
+  // -0.5) 종합 총평(모든 판단의 요약 한 문단)
+  const summary=overallSummary(a);
+  if(summary){
+    h+=`<div class="card" style="border-color:var(--accent)"><h2>🧭 종합 총평</h2>
+      <div class="desc">아래 각 카드의 판단을 모은 한 문단 요약입니다. 전체를 다 읽기 전에 핵심만 먼저 파악하는 용도이며, 세부 근거는 각 카드에서 확인하세요.</div>
+      <div class="judge-read" style="font-size:14px">${esc(summary)}</div>
+    </div>`;
+  }
+
   // 0) 자동 추천 키워드(빈도 기반) + 원문 문장 클릭 추적
   const auto=a.auto||[]; const hasKwBox=!!document.getElementById('kw');
   if(auto.length){
@@ -385,6 +437,7 @@ function render(){
     h+=`<div class="card"><h2>🌡️ 학년별 활동 밀도</h2>
       <div class="desc">자율·동아리·진로·세특 각 영역에서 <b>진로 핵심어</b>가 학년별로 얼마나 등장했는지 색 농도로 표현했습니다(짙을수록 많음). 학년이 오를수록 짙어지면 전공 심화가 '우상향'으로 이어진다는 근거입니다.</div>
       <div style="overflow-x:auto">${actHeatSvg(ah)}</div>
+      ${judgeBox(judgeActivityHeat(ah))}
     </div>`;
   }
 
@@ -454,7 +507,7 @@ function render(){
       <div class="desc">메인 진로 키워드(<b>${esc(fm.main[0]||'—')}</b>)가 <b>서로 다른 교과</b>에서 탐구됐는지를 지도로 봅니다. <span style="color:#2f8f5f;font-weight:700">초록 실선</span>=탐구가 연결된 교과, <span style="color:#9aa4b0;font-weight:700">회색 점선</span>=아직 <b>빈 공간</b>(융합 확장 여지). 최상위권일수록 하나의 주제를 여러 교과에서 다각도로 본 '융합형'을 선호합니다.</div>
       <div style="text-align:center">${fusionSvg(fm)}</div>
       ${fm.strong.length?`<div class="note">✅ 연결된 교과: ${fm.strong.map(s=>`<b>${esc(s.group)}</b>(${s.subjects.slice(0,2).map(x=>esc(x.subject)).join(', ')} · ${s.n}회)`).join(' &nbsp;·&nbsp; ')}</div>`:''}
-      ${fm.gaps.length?`<div class="note">⭕ 빈 공간(확장 여지): <b>${fm.gaps.map(g=>esc(g.group)).join(', ')}</b> — 이 교과의 수행평가에 진로 주제를 접목하면 융합 시각을 보여줄 수 있습니다(아래 '다음 학기 액션 플랜' 참고).</div>`:'<div class="note">주요 교과에 고루 연결되어 있습니다 — 융합 폭이 넓습니다.</div>'}
+      ${judgeBox(judgeFusion(fm))}
     </div>`;
   }
 
@@ -464,6 +517,7 @@ function render(){
     h+=`<div class="card"><h2>🌌 키워드 연결 네트워크</h2>
       <div class="desc">교과군·창체(<span style="color:#2f6f4f;font-weight:700">초록=세특</span>·<span style="color:#7a5bb0;font-weight:700">보라=창체</span>)를 노드로 두고, 진로 핵심어를 연결했습니다. <b><span style="color:#c98a3a">주황 키워드</span>=여러 교과·활동에 걸친 것</b>(중앙 배치) — 교과에서 배운 개념이 동아리·진로로 이어진 '꼬리물기·융합'을 직관적으로 보여줍니다.</div>
       <div style="text-align:center">${networkSvg(net)}</div>
+      ${judgeBox(judgeNetwork(net))}
     </div>`;
   }
 
@@ -532,7 +586,7 @@ function render(){
 
 // ── 카드를 접이식 섹션으로 그룹화(제목 매칭 기반, 카드 수정 불필요) ──
 const SECTIONS=[
-  {key:'summary', title:'🎓 핵심 요약', open:true,  match:['Key Highlights','성적 강점맵','역량 밸런스']},
+  {key:'summary', title:'🎓 핵심 요약', open:true,  match:['종합 총평','Key Highlights','성적 강점맵','역량 밸런스']},
   {key:'act',     title:'📚 활동·세특·역량', open:true, match:['창체 진화','세특 리뷰','3대 역량','주도성 행위']},
   {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 클라우드','성장 궤적','활동 밀도','진로 일관성','융합 지도','키워드 연결 네트워크','교과·활동 × 진로','썬버스트','합격 기준']},
   {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','심화 탐구','Weak Spots','Next Step','면접·상담']},

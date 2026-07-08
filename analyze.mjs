@@ -684,6 +684,28 @@ export function keywordNetwork(r, setName) {
   return { areas: Object.values(areaMap).filter(a => used.has(a.id)), keywords };
 }
 
+/* ── 사용자 판정 사전 편집(피드백 루프) ──
+   교사가 실사용 중 발견한 표현을 추가만 하는(제거 없는) 안전한 튜닝. 학생 데이터 아닌 '단어'만 다뤄 영구 저장에 문제 없음.
+   재호출해도 중복 누적되지 않도록, 최초 로드 시점 길이를 기준으로 매번 초기화 후 재적용(멱등). */
+const _baseStrongLen = STRONG_MARKERS.length;
+const _baseWeakLen = WEAK_MARKERS.length;
+const _baseMotiveLen = INQUIRY.motive.length;
+const _baseExternalLen = INQUIRY.external.length;
+export function applyCustomDict(custom = {}) {
+  STRONG_MARKERS.length = _baseStrongLen; if (custom.strong && custom.strong.length) STRONG_MARKERS.push(...custom.strong);
+  WEAK_MARKERS.length = _baseWeakLen; if (custom.weak && custom.weak.length) WEAK_MARKERS.push(...custom.weak);
+  INQUIRY.motive.length = _baseMotiveLen; if (custom.motive && custom.motive.length) INQUIRY.motive.push(...custom.motive);
+  INQUIRY.external.length = _baseExternalLen; if (custom.external && custom.external.length) INQUIRY.external.push(...custom.external);
+  const avIdx = ACTION_VERBS.findIndex(a => a.v === '사용자 추가 표현');
+  if (avIdx >= 0) ACTION_VERBS.splice(avIdx, 1);
+  if (custom.actionVerb && custom.actionVerb.length) { ACTION_VERBS.push({ v: '사용자 추가 표현', kws: custom.actionVerb }); ACTION_TIER['사용자 추가 표현'] = 2; }
+  const subs = COMPETENCY.공동체역량.subs;
+  const ci = subs.findIndex(s => s.key === '사용자 추가');
+  if (ci >= 0) subs.splice(ci, 1);
+  if (custom.community && custom.community.length) subs.push({ key: '사용자 추가', emoji: '✏️', kws: custom.community });
+  return custom;
+}
+
 export function analyze(r, setName = '생명·과학') {
   const heatmap = keywordHeatmap(r, setName);
   const thread = careerThread(r, setName);
