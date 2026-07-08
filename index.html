@@ -1378,11 +1378,13 @@ function radarProfile(r, setName, pre = {}) {
     { axis: '자기주도성', v: sub('학업역량', '자기주도') + verb('기획·설계') + verb('대안·제언'), cap: 16 },
     { axis: '성실·배려', v: sub('공동체역량', '성실·책임') + sub('공동체역량', '나눔·배려'), cap: 24 },
   ];
-  // 축마다 단위·규모가 달라 절대 상한만으론 다 포화됨 → 축별 상한 정규화(비교가능) 후,
-  // 이 학생 안에서의 '상대 강도'로 재정규화(가장 강한 축=바깥 테두리, 나머지는 비례해 길고 짧게).
-  const ratios = raw.map(a => a.v / a.cap);
-  const mx = Math.max(0.001, ...ratios);
-  return raw.map((a, i) => ({ axis: a.axis, value: a.v, norm: +(0.08 + 0.92 * (ratios[i] / mx)).toFixed(3) }));
+  // 축마다 단위·규모가 달라 원시값은 서로 비교 불가(예: 전공적합성은 키워드 수 누적이라 자연히 커짐) →
+  // 각 축을 '그 축 자신의 상한 대비 비율'로 독립 환산(축끼리 다시 비교해 늘리지 않음).
+  // 그래야 그래프 위치와 표시되는 숫자(백분율)가 항상 일치한다.
+  return raw.map(a => {
+    const pct = Math.round(Math.min(100, (a.v / a.cap) * 100));
+    return { axis: a.axis, value: a.v, pct, norm: +(0.04 + 0.96 * (pct / 100)).toFixed(3) };
+  });
 }
 // 3) 학년×영역 활동 밀도(진로 핵심어 빈도)
 function activityHeat(r, setName) {
@@ -1736,7 +1738,7 @@ function judgeRadar(radar){
   const read = (top.norm-low.norm)<0.28
     ? `다섯 역량이 비교적 고르게 나타나는 균형형입니다. 특정 축에 치우치지 않아 종합적으로 안정적입니다.`
     : `${top.axis}이(가) 가장 두드러지고 ${low.axis}이(가) 상대적으로 약합니다. ${low.axis} 관련 활동·기록을 보완하면 오각형이 더 고르게 채워집니다.`;
-  return {read:`${read} (강한 축: ${bn.slice(0,2).map(a=>a.axis).join('·')} / 약한 축: ${low.axis})`, logic:'축 길이=이 학생 안에서의 상대 강도(축마다 측정 단위가 달라 절대 비교가 아닌 프로파일). 숫자는 실측 신호 수.'};
+  return {read:`${read} (강한 축: ${bn.slice(0,2).map(a=>a.axis+' '+a.pct+'%').join('·')} / 약한 축: ${low.axis} ${low.pct}%)`, logic:'각 축 길이=그 축 자신의 참고 상한 대비 백분율(축마다 독립 계산 — 다른 축과 원시 개수로 직접 비교하지 않습니다). 그래서 한 축의 숫자가 다른 축보다 커도 참고 상한이 다르면 그래프상 더 짧게 보일 수 있습니다.'};
 }
 function judgeSunburst(sb){
   if(!sb||!sb.total) return null;
@@ -1810,10 +1812,11 @@ function radarSvg(axes){
   const pt=(i,rr)=>{const a=-Math.PI/2+i*2*Math.PI/N;return [cx+rr*Math.cos(a),cy+rr*Math.sin(a)];};
   let s=`<svg viewBox="0 0 ${W} ${H}">`;
   [0.25,0.5,0.75,1].forEach(f=>s+=`<polygon points="${axes.map((_,i)=>pt(i,R*f).join(',')).join(' ')}" fill="none" stroke="#e6e9ee"/>`);
+  [25,50,75,100].forEach((pctLbl,k)=>{const f=(k+1)/4,[lx,ly]=pt(0,R*f);s+=`<text x="${(lx+3).toFixed(1)}" y="${(ly-2).toFixed(1)}" font-size="8" fill="#c3cad3">${pctLbl}%</text>`;});
   axes.forEach((_,i)=>{const [x,y]=pt(i,R);s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#e6e9ee"/>`;});
   s+=`<polygon points="${axes.map((a,i)=>pt(i,R*a.norm).join(',')).join(' ')}" fill="rgba(47,111,79,.22)" stroke="#2f6f4f" stroke-width="2"/>`;
   axes.forEach((a,i)=>{const [x,y]=pt(i,R*a.norm);s+=`<circle cx="${x}" cy="${y}" r="3" fill="#2f6f4f"/>`;});
-  axes.forEach((a,i)=>{const [x,y]=pt(i,R+15);const anch=Math.abs(x-cx)<10?'middle':(x>cx?'start':'end');s+=`<text x="${x}" y="${y}" font-size="11" font-weight="600" fill="#1f2733" text-anchor="${anch}">${esc(a.axis)}</text><text x="${x}" y="${y+12}" font-size="9" fill="#9aa4b0" text-anchor="${anch}">${a.value}</text>`;});
+  axes.forEach((a,i)=>{const [x,y]=pt(i,R+15);const anch=Math.abs(x-cx)<10?'middle':(x>cx?'start':'end');s+=`<text x="${x}" y="${y}" font-size="11" font-weight="600" fill="#1f2733" text-anchor="${anch}">${esc(a.axis)}</text><text x="${x}" y="${y+12}" font-size="9" fill="#9aa4b0" text-anchor="${anch}">${a.pct}%</text>`;});
   return s+'</svg>';
 }
 // 학년×영역 활동 밀도 히트맵
@@ -2062,7 +2065,7 @@ function render(){
   // 2.72) 역량 밸런스 방사형(레이더)
   if(a.radar&&a.radar.length){
     h+=`<div class="card"><h2>🕸️ 역량 밸런스 (레이더)</h2>
-      <div class="desc">추출된 신호를 <b>학업·전공적합성·리더십/소통·자기주도·성실/배려</b> 5개 축으로 매핑했습니다. 길이는 <b>이 학생 안에서의 상대 강도</b>(가장 강한 축이 바깥 테두리, 나머지는 비례). 오각형이 고르면 균형형, <b>유독 짧은 축이 있으면 그 부분이 보완 지점</b>입니다. 숫자는 실측 신호 수입니다.</div>
+      <div class="desc">추출된 신호를 <b>학업·전공적합성·리더십/소통·자기주도·성실/배려</b> 5개 축으로 매핑했습니다. 각 축의 숫자는 <b>그 축 자신의 참고 상한 대비 백분율</b>(축마다 독립 계산 — 축끼리 원시 개수를 직접 비교하지 않습니다). 오각형이 고르면 균형형, <b>유독 짧은 축이 있으면 그 부분이 보완 지점</b>입니다.</div>
       <div style="text-align:center">${radarSvg(a.radar)}</div>
       ${judgeBox(judgeRadar(a.radar))}
     </div>`;

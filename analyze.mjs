@@ -656,11 +656,13 @@ export function radarProfile(r, setName, pre = {}) {
     { axis: '자기주도성', v: sub('학업역량', '자기주도') + verb('기획·설계') + verb('대안·제언'), cap: 16 },
     { axis: '성실·배려', v: sub('공동체역량', '성실·책임') + sub('공동체역량', '나눔·배려'), cap: 24 },
   ];
-  // 축마다 단위·규모가 달라 절대 상한만으론 다 포화됨 → 축별 상한 정규화(비교가능) 후,
-  // 이 학생 안에서의 '상대 강도'로 재정규화(가장 강한 축=바깥 테두리, 나머지는 비례해 길고 짧게).
-  const ratios = raw.map(a => a.v / a.cap);
-  const mx = Math.max(0.001, ...ratios);
-  return raw.map((a, i) => ({ axis: a.axis, value: a.v, norm: +(0.08 + 0.92 * (ratios[i] / mx)).toFixed(3) }));
+  // 축마다 단위·규모가 달라 원시값은 서로 비교 불가(예: 전공적합성은 키워드 수 누적이라 자연히 커짐) →
+  // 각 축을 '그 축 자신의 상한 대비 비율'로 독립 환산(축끼리 다시 비교해 늘리지 않음).
+  // 그래야 그래프 위치와 표시되는 숫자(백분율)가 항상 일치한다.
+  return raw.map(a => {
+    const pct = Math.round(Math.min(100, (a.v / a.cap) * 100));
+    return { axis: a.axis, value: a.v, pct, norm: +(0.04 + 0.96 * (pct / 100)).toFixed(3) };
+  });
 }
 // 3) 학년×영역 활동 밀도(진로 핵심어 빈도)
 export function activityHeat(r, setName) {
