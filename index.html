@@ -886,6 +886,21 @@ function gapChecklist(r, setName) {
    STRONG=분명한 우수성 표현, WEAK=태도/역량 표현. 강한 것 1+ 또는 (강+약)2+ 문장을 강점으로. */
 const STRONG_MARKERS = ['돋보', '뛰어', '인상적', '우수', '탁월', '모범', '주도적', '주도하', '리더십', '두각', '열정', '발휘', '통찰', '창의', '심화', '깊이 있', '완성도', '탐구력', '적극적으로 참여', '독창'];
 const WEAK_MARKERS = ['적극', '성실', '능동', '자발', '논리적', '체계적', '꼼꼼', '책임', '근면', '끈기', '기여', '함양', '확장', '집중', '완성', '설계', '분석', '주도', '협업', '노력'];
+/* ── 부정어 보정 ── '적극적으로 참여하지 못함'처럼 긍정 표현어 뒤에 부정이 붙으면 오판정하지 않도록.
+   뒤 12자 이내 부정 서술(못하/않/없/부족 등) 또는 바로 앞 부정 접두어(무·비·불·미)면 이 발생은 제외. */
+const NEG_AFTER = /^.{0,12}?(못하|못했|못함|못한|않|없|아니|어려|부족|미흡|힘들|서툴|저조|실패|포기)/;
+const NEG_BEFORE = /(무|비|불|미)$/;
+function isNegated(text, idx, len) {
+  if (NEG_AFTER.test(text.slice(idx + len, idx + len + 12))) return true;
+  if (NEG_BEFORE.test(text.slice(Math.max(0, idx - 2), idx))) return true;
+  return false;
+}
+/* term이 text 안에서 '부정되지 않은 채' 등장하는지(1회 이상) */
+function hasPositiveHit(text, term) {
+  let from = 0, idx;
+  while ((idx = text.indexOf(term, from)) !== -1) { if (!isNegated(text, idx, term.length)) return true; from = idx + term.length; }
+  return false;
+}
 function shorten(s, n = 74) {
   s = s.replace(/\s+/g, ' ').trim();
   if (s.length > n) s = s.slice(0, n - 1).replace(/\S*$/, '').trim() + '…';
@@ -897,7 +912,7 @@ function gist(sen, n = 42) {
   const clauses = sen.split(/[,，·;]|(?<=[며고여])\s/).map(c => c.trim()).filter(c => c.length > 4);
   let best = null, bs = -1;
   clauses.forEach(c => {
-    const sc = STRONG_MARKERS.filter(m => c.includes(m)).length * 2 + WEAK_MARKERS.filter(m => c.includes(m)).length;
+    const sc = STRONG_MARKERS.filter(m => hasPositiveHit(c, m)).length * 2 + WEAK_MARKERS.filter(m => hasPositiveHit(c, m)).length;
     if (sc > bs || (sc === bs && best && c.length < best.length)) { bs = sc; best = c; }
   });
   let t = (best || sen).replace(/\s+/g, ' ').trim();
@@ -910,8 +925,8 @@ function extractPositive(text) {
   const sents = text.split(/(?<=[가-힣)])\.\s+/).map(s => s.trim()).filter(s => s.length > 10);
   const out = [];
   sents.forEach(sen => {
-    const strong = [...new Set(STRONG_MARKERS.filter(m => sen.includes(m)))];
-    const weak = [...new Set(WEAK_MARKERS.filter(m => sen.includes(m)))];
+    const strong = [...new Set(STRONG_MARKERS.filter(m => hasPositiveHit(sen, m)))];
+    const weak = [...new Set(WEAK_MARKERS.filter(m => hasPositiveHit(sen, m)))];
     const score = strong.length * 2 + weak.length;
     if (strong.length >= 1 || (strong.length + weak.length) >= 2) {
       const tags = strong.map(t => t.replace(/(적으로 참여|하$|있$)/, '')).concat(weak).slice(0, 3);
@@ -1042,6 +1057,7 @@ const COMPETENCY = {
       { key: '지적호기심', emoji: '🔍', kws: ['호기심', '궁금', '의문을', '의문이', '의문을 품', '왜 그런', '흥미를 느끼', '흥미를 갖', '흥미를 가지', '관심을 갖', '관심을 가지', '관심을 두', '질문을 던지', '의구심', '문제의식', '더 알고 싶', '알아보고자', '탐구하고자'] },
       { key: '자기주도', emoji: '🧭', kws: ['스스로', '자기주도', '자발적', '능동적', '직접 찾아', '직접 조사', '직접 자료를', '주도적으로 학습', '자기 주도', '먼저 나서', '자율적으로', '자기 스스로'] },
       { key: '탐구·심화', emoji: '📈', kws: ['더 나아가', '나아가', '심화', '확장하여', '확장시켜', '후속 탐구', '추가로', '추가 탐구', '연계하여 탐구', '발전시켜', '파고들', '깊이 있게 탐구', '꼬리를 무는', '한 걸음 더', '심층적으로'] },
+      { key: '성찰·회고', emoji: '🪞', kws: ['성찰', '깨닫', '돌아보', '반성', '재구성하며', '부족함을 느', '한계를 깨닫', '배운 점을', '느낀 점을', '보완점을 찾', '개선점을 찾', '스스로를 점검', '되돌아보'] },
     ],
   },
   진로역량: {
@@ -1075,7 +1091,7 @@ function competencySignals(r) {
     const subs = def.subs.map(sub => {
       const seen = new Set(); const ev = []; let n = 0;
       sents.forEach(se => {
-        const hits = sub.kws.filter(k => se.t.includes(k));
+        const hits = sub.kws.filter(k => hasPositiveHit(se.t, k));
         if (!hits.length) return;
         n += hits.length;
         const sig = se.src + '|' + se.t.slice(0, 18);
@@ -1139,7 +1155,7 @@ function actionVerbs(r) {
   const cats = ACTION_VERBS.map(av => {
     let n = 0; const seen = new Set(); const ex = [];
     sents.forEach(se => {
-      const hit = av.kws.find(k => se.t.includes(k)); if (!hit) return;
+      const hit = av.kws.find(k => hasPositiveHit(se.t, k)); if (!hit) return;
       n++; const sig = se.src + '|' + se.t.slice(0, 16);
       if (!seen.has(sig)) { seen.add(sig); ex.push({ src: se.src, grade: se.grade, text: shorten(se.t), hit }); }
     });
@@ -1359,7 +1375,7 @@ function radarProfile(r, setName, pre = {}) {
   const verb = v => (av.cats.find(c => c.v === v) || { n: 0 }).n;
   // cap = 축별 '충분히 높은' 기준값(관측 표본 기준 보정) — 축 간 규모 차이를 보정해 특정 축 고정 방지
   const raw = [
-    { axis: '학업 역량', v: sub('학업역량', '지적호기심') + sub('학업역량', '탐구·심화'), cap: 18 },
+    { axis: '학업 역량', v: sub('학업역량', '지적호기심') + sub('학업역량', '탐구·심화') + sub('학업역량', '성찰·회고'), cap: 24 },
     { axis: '전공적합성', v: hm.total + inq.rich.length * 2, cap: 90 },
     { axis: '리더십·소통', v: sub('공동체역량', '협업·소통') + sub('공동체역량', '리더십'), cap: 40 },
     { axis: '자기주도성', v: sub('학업역량', '자기주도') + verb('기획·설계') + verb('대안·제언'), cap: 16 },
