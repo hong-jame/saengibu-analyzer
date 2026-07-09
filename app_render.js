@@ -515,10 +515,12 @@ function networkSvg(net){
   const edges=[]; kwNodes.forEach(kn=>kn.kw.areas.forEach(id=>edges.push({from:'A:'+id,to:kn.id})));
   forceLayout(nodes,edges,W,H);
   const pos={}; nodes.forEach(nd=>pos[nd.id]=nd);
-  let s=`<svg viewBox="0 0 ${W} ${H}"><defs><filter id="ng" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="1" stdDeviation="1.3" flood-opacity="0.22"/></filter></defs>`;
+  // 가장자리 노드의 중앙정렬 라벨이 잘리지 않도록 viewBox에 여백(좌우 넉넉히)을 둔다
+  const PX=58,PT=20,PB=12;
+  let s=`<svg viewBox="${-PX} ${-PT} ${W+2*PX} ${H+PT+PB}"><defs><filter id="ng" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="1" stdDeviation="1.3" flood-opacity="0.22"/></filter></defs>`;
   edges.forEach(e=>{const p=pos[e.from],q=pos[e.to],kn=pos[e.to];s+=`<line x1="${p.x.toFixed(1)}" y1="${p.y.toFixed(1)}" x2="${q.x.toFixed(1)}" y2="${q.y.toFixed(1)}" stroke="${kn.multi?'#c9822f':'#dbe1e7'}" stroke-width="${kn.multi?2:1.1}" opacity="${kn.multi?0.85:0.5}"/>`;});
-  areaNodes.forEach(nd=>{const p=pos[nd.id];s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nd.r.toFixed(1)}" fill="${areaCol[nd.ar.type]||'#3b6ea5'}" filter="url(#ng)"><title>${esc(nd.ar.label)} · ${nd.ar.n}회</title></circle><text x="${p.x.toFixed(1)}" y="${(p.y+4).toFixed(1)}" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${esc(nd.ar.label)}</text>`;});
-  kwNodes.forEach(nd=>{const p=pos[nd.id],col=nd.multi?'#c9822f':'#aab2bd';s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nd.r.toFixed(1)}" fill="${col}"${nd.multi?' filter="url(#ng)"':''}><title>${esc(nd.kw.k)} · ${nd.kw.n}회 · ${nd.kw.areas.length}곳</title></circle><text x="${p.x.toFixed(1)}" y="${(p.y-nd.r-3).toFixed(1)}" font-size="${nd.multi?11:9.5}" font-weight="${nd.multi?800:600}" fill="${nd.multi?'#8a5a12':'#5a6472'}" text-anchor="middle">${esc(nd.kw.k)}</text>`;});
+  areaNodes.forEach(nd=>{const p=pos[nd.id];s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nd.r.toFixed(1)}" fill="${areaCol[nd.ar.type]||'#3b6ea5'}" filter="url(#ng)"><title>${esc(nd.ar.label)} · ${nd.ar.n}회</title></circle><text x="${p.x.toFixed(1)}" y="${(p.y+4).toFixed(1)}" font-size="12" font-weight="700" fill="#fff" text-anchor="middle">${esc(nd.ar.label)}</text>`;});
+  kwNodes.forEach(nd=>{const p=pos[nd.id],col=nd.multi?'#c9822f':'#aab2bd';s+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${nd.r.toFixed(1)}" fill="${col}"${nd.multi?' filter="url(#ng)"':''}><title>${esc(nd.kw.k)} · ${nd.kw.n}회 · ${nd.kw.areas.length}곳</title></circle><text x="${p.x.toFixed(1)}" y="${(p.y-nd.r-3).toFixed(1)}" font-size="${nd.multi?12:10.5}" font-weight="${nd.multi?800:600}" fill="${nd.multi?'#8a5a12':'#5a6472'}" text-anchor="middle">${esc(nd.kw.k)}</text>`;});
   return s+'</svg>';
 }
 function render(){
@@ -580,15 +582,6 @@ function render(){
       ${wordHeatmapSvg(ckw,{catColors:CAT})}
     </div>`;
     }
-    // 계층형 썬버스트(생기부 텍스트 비중)
-    const sb=a.sunburst;
-    if(sb && sb.total){
-      h+=`<div class="card"><h2>🌳 생기부 구성 썬버스트</h2>
-        <div class="desc">생기부 텍스트를 <b>안쪽=영역(세특/창체/행특) → 중간=과목·활동 → 바깥=대표 키워드</b> 계층으로 쪼갰습니다. 면적(글자수)으로 <b>어떤 과목·활동이 굵직한 뼈대</b>인지 한눈에 파악합니다.</div>
-        <div style="text-align:center">${sunburstSvg(sb)}</div>
-        ${judgeBox(judgeSunburst(sb))}
-      </div>`;
-    }
   }
 
   // 1) 강점맵: 국영수사과 5개 과목별 미니 추이 + 성취도 도넛
@@ -615,16 +608,6 @@ function render(){
     <div class="note">가장 일관된 진로 축: ${topTh?`<b>${esc(topTh.keyword)}</b> (${topTh.docs}곳${topTh.fusion?' · 교과/영역 융합':''})`:'—'} &nbsp;·&nbsp; 가장 강한 역량: ${topComp?`<b>${esc(topComp.label)}</b> (${topComp.total}회)`:'—'} &nbsp;·&nbsp; 주도성 행위 동사 <b>${av.total}</b>회</div>
   </div>`;
 
-  // 1.4) 학년별 역량 성장 궤적
-  const gt=a.growth;
-  if(gt){
-    h+=`<div class="card"><h2>📈 학년별 성장 궤적</h2>
-      <div class="desc">학년이 오르며 관심이 <b>넓고 얕은 호기심 → 좁고 깊은 전공 탐구</b>로 발전하는지 추적합니다. 초록 영역=학년별 <b>진로 핵심어 등장 빈도</b>(전공 몰입도), 점 아래 배지=<b>탐구 깊이 상·중·하</b>·진하기=행위 수준. 우상향으로 넓어지면 전공 심화가 짙어진 것입니다. 아래 학년별 상세와 함께 보세요.</div>
-      ${gt.multi?`<div style="text-align:center">${growthSvg(gt.rows)}</div>`:''}
-      ${judgeBox(judgeGrowth(gt))}
-      ${gt.rows.map(r=>`<div class="gt-row"><span class="gt-g">${r.grade}학년</span><div class="gt-body"><div>${r.keywords.length?r.keywords.map(k=>`<span class="tag">${esc(k.k)}×${k.n}</span>`).join(''):'<span class="g" style="color:var(--sub)">진로 핵심어 미검출</span>'}</div><div class="gt-meta">행위 수준 <b>${esc(r.tierLabel)}</b>${r.verbs.length?` <span class="g">(${r.verbs.slice(0,4).map(esc).join(', ')})</span>`:''} · 탐구 깊이 <b>${esc(r.band)}</b> · 진로 연계 교과 <b>${r.breadth}</b>개</div></div></div>`).join('')}
-    </div>`;
-  }
 
   // 1.45) 학년×영역 활동 밀도 히트맵
   const ah=a.actHeat;
@@ -695,17 +678,6 @@ function render(){
       ${th.keywords.map(k=>`<div class="thd"><div class="thd-h"><b>${esc(k.keyword)}</b> <span class="g">${k.docs}곳 · ${k.grades.length?k.grades.join('·')+'학년':'학년 미상'} · 총 ${k.total}회</span></div>
         <div class="thd-src">${k.sources.slice(0,14).map(s=>`<span class="thd-chip t-${s.type}">${s.grade!=null?s.grade+'학년 ':''}${esc(s.label)}${s.n>1?' ×'+s.n:''}</span>`).join('')}</div></div>`).join('')}
       <div class="note">여러 학년·구분(세특·창체·수상·행특)에 고루 걸칠수록 '일관된 진로 서사'로 읽힙니다. <b>서로 다른 교과·영역에 걸치면(융합)</b> 사정관이 특히 높게 봅니다. 진로군 키워드를 바꾸면 다른 축으로 다시 볼 수 있습니다.</div>
-    </div>`;
-  }
-
-  // 2.85) 전공적합성 교과 융합 지도
-  const fm=a.fusion;
-  if(fm && fm.nodes.length){
-    h+=`<div class="card"><h2>🕸️ 전공적합성 교과 융합 지도</h2>
-      <div class="desc">메인 진로 키워드(<b>${esc(fm.main[0]||'—')}</b>)가 <b>서로 다른 교과</b>에서 탐구됐는지를 지도로 봅니다. <span style="color:#178055;font-weight:700">초록 실선</span>=탐구가 연결된 교과, <span style="color:#9aa4b0;font-weight:700">회색 점선</span>=아직 <b>빈 공간</b>(융합 확장 여지). 최상위권일수록 하나의 주제를 여러 교과에서 다각도로 본 '융합형'을 선호합니다.</div>
-      <div style="text-align:center">${fusionSvg(fm)}</div>
-      ${fm.strong.length?`<div class="note">✅ 연결된 교과: ${fm.strong.map(s=>`<b>${esc(s.group)}</b>(${s.subjects.slice(0,2).map(x=>esc(x.subject)).join(', ')} · ${s.n}회)`).join(' &nbsp;·&nbsp; ')}</div>`:''}
-      ${judgeBox(judgeFusion(fm))}
     </div>`;
   }
 
@@ -791,7 +763,7 @@ function render(){
 const SECTIONS=[
   {key:'summary', title:'🎓 핵심 요약', open:true,  match:['종합 총평','Key Highlights','성적 강점맵','역량 밸런스']},
   {key:'act',     title:'📚 활동·세특·역량', open:true, match:['창체 진화','세특 리뷰','3대 역량','주도성 행위']},
-  {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 히트맵','성장 궤적','활동 밀도','진로 일관성','융합 지도','키워드 연결 네트워크','교과·활동 × 진로','썬버스트','합격 기준']},
+  {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 히트맵','활동 밀도','진로 일관성','키워드 연결 네트워크','교과·활동 × 진로','합격 기준']},
   {key:'navi',    title:'🏫 대학 전형 참고 (수시NAVI)', open:false, match:['역량 강조 전형','인재상 키워드','진로선택과목 반영']},
   {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','심화 탐구','Weak Spots','Next Step','면접·상담']},
   {key:'raw',     title:'📊 원자료', open:false, match:['성적 상세']},
