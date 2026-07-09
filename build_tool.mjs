@@ -7,6 +7,7 @@ const PARSE = strip(fs.readFileSync('parse.mjs', 'utf8'));
 const ANALYZE = strip(fs.readFileSync('analyze.mjs', 'utf8'));
 const RENDER = fs.readFileSync('app_render.js', 'utf8');
 const CSS = fs.readFileSync('app_style.css', 'utf8');
+const NAVI = fs.existsSync('navi.json') ? fs.readFileSync('navi.json', 'utf8') : '{"jonghap":[],"gyogwa":{}}';
 const escScript = s => s.replace(/<\/script/gi, '<\\/script');   // 조기 종료 방지
 
 /* pdf.js ESM 빌드 → 일반(classic) 스크립트 변환.
@@ -215,6 +216,7 @@ ${ANALYZE}
 ${EXTRACT_JS}
 // ── 상태 + 렌더(공유) ──
 let DATA=[], idx=0, anon=false;
+window.NAVI=${NAVI};
 ${RENDER}
 const setStatus=(m,err)=>{const el=document.getElementById('status');el.textContent=m||'';el.className=err?'err':'';};
 async function handleFile(file){

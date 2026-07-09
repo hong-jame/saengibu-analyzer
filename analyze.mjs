@@ -374,9 +374,9 @@ export function competencySignals(r) {
       });
       return { key: sub.key, emoji: sub.emoji, n, docs: ev.length, evidence: ev.sort((a, b) => a.grade - b.grade).slice(0, 3) };
     });
-    // 역량 대표 근거: 활성 하위지표에서 골고루 최대 3개
+    // 역량 대표 근거: 활성 하위지표에서 골고루 최대 3개(같은 문장이 여러 지표의 대표가 되어도 1회만)
     const top = []; const used = new Set();
-    subs.filter(s => s.n).forEach(s => { if (s.evidence[0]) { top.push(s.evidence[0]); used.add(s.evidence[0].text); } });
+    subs.filter(s => s.n).forEach(s => { const e = s.evidence[0]; if (e && !used.has(e.text)) { top.push(e); used.add(e.text); } });
     subs.filter(s => s.n).forEach(s => s.evidence.slice(1).forEach(e => { if (top.length < 3 && !used.has(e.text)) { top.push(e); used.add(e.text); } }));
     return { key, label: key, emoji: def.emoji, desc: def.desc, subs, total: subs.reduce((a, b) => a + b.n, 0), active: subs.filter(s => s.n > 0).length, top: top.slice(0, 3) };
   });

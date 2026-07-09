@@ -22,6 +22,7 @@ const DATA = students.map(s => {
 
 const CSS = fs.readFileSync('app_style.css', 'utf8');
 const RENDER = fs.readFileSync('app_render.js', 'utf8');
+const NAVI = fs.existsSync('navi.json') ? fs.readFileSync('navi.json', 'utf8') : '{"jonghap":[],"gyogwa":{}}';
 
 const html = `<meta charset="utf-8">
 <title>생기부 컨설팅 리포트 (프로토타입)</title>
@@ -42,6 +43,7 @@ const html = `<meta charset="utf-8">
 <script>
 const DATA = ${JSON.stringify(DATA)};
 let idx=0, anon=false;
+window.NAVI=${NAVI};
 ${RENDER}
 function initSel(){const s=$('#stu');s.innerHTML=DATA.map((d,i)=>\`<option value="\${i}">\${d.parsed.meta.name} (\${d.set})</option>\`).join('');s.onchange=e=>{idx=+e.target.value;render()}}
 $('#anon').onclick=()=>{anon=!anon;$('#anon').classList.toggle('on',anon);render()};

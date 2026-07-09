@@ -184,3 +184,26 @@ svg{max-width:100%;height:auto}
   .sec-h{background:#fff;border:none;padding:8px 0 4px;font-size:15px;border-bottom:2px solid #ccc}
   .sec-caret,.sec-cnt{display:none}
 }
+
+/* ── 대학 전형 참고 (수시NAVI) ── */
+.cmix{display:flex;height:22px;border-radius:6px;overflow:hidden;margin:4px 0;border:1px solid var(--line);min-width:220px;max-width:460px}
+.cmix span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden}
+.nv-me{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 12px;font-size:12.5px;font-weight:600}
+.nv-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:8px}
+.nv-row{border:1px solid var(--line);border-radius:9px;padding:8px 10px;background:#fbfcfd}
+.nv-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
+.nv-top .g{color:var(--sub);font-size:12px}
+.nv-rg{font-size:11px;color:var(--sub);border:1px solid var(--line);border-radius:5px;padding:0 5px}
+.nv-sim{margin-left:auto;font-size:11px;font-weight:700;color:var(--accent);background:var(--soft);border-radius:5px;padding:1px 7px}
+.nv-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 2px;font-size:11.5px}
+.nv-w i{font-style:normal;font-weight:700}
+.nv-min,.nv-int{color:var(--sub);background:#f1f4f7;border-radius:5px;padding:1px 6px}
+.nv-ideal{font-size:11.5px;color:var(--sub);line-height:1.45;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nvi-wrap{display:flex;flex-wrap:wrap;gap:7px;margin:6px 0}
+.nvi{display:inline-flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:9px;padding:5px 9px;font-size:12px;background:#fafbfc;min-width:78px}
+.nvi small{color:var(--sub);font-size:10.5px}
+.nvi.has{color:#fff;cursor:pointer;border-width:1.5px}
+.nvi.has small{color:rgba(255,255,255,.85)}
+.nvi.has:hover{filter:brightness(1.06)}
+.nvi-bar{display:block;height:4px;background:#eef1f4;border-radius:3px;overflow:hidden;margin-top:2px}
+.nvi-bar span{display:block;height:100%;border-radius:3px;opacity:.65}

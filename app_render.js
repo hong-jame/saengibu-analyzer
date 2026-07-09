@@ -333,6 +333,98 @@ function wordHeatmapSvg(auto,opts){
   });
   return s+'</svg>';
 }
+
+/* ─────────── 대학 전형 참고 (경기도교육청 수시NAVI 추출 데이터) ───────────
+   원칙: 합격예측 아님. 대학이 공개한 평가요소 비중·인재상을 학생 실측값과 '나란히' 보여주는 참고 정보. */
+function naviData(){ return (typeof window!=='undefined'&&window.NAVI)||{jonghap:[],gyogwa:{}}; }
+// 학생 실측 3대 역량 비중(%) — a.competency의 total을 정규화
+function studentCompMix(a){
+  const c=a.competency||[]; const g=k=>((c.find(x=>x.key===k)||{}).total)||0;
+  const ac=g('학업역량'), ca=g('진로역량'), co=g('공동체역량'); const tot=ac+ca+co;
+  if(!tot) return null;
+  return {acad:ac/tot*100, career:ca/tot*100, community:co/tot*100, raw:{ac,ca,co}};
+}
+function studentTextBlob(p){
+  const t=[]; (p.details||[]).forEach(d=>t.push(d.text||''));
+  ['autonomy','club','career'].forEach(k=>(p.creative&&p.creative[k]||[]).forEach(a=>t.push(a.text||'')));
+  (p.behavior||[]).forEach(b=>t.push(b.text||'')); (p.awards||[]).forEach(a=>t.push(a.name||''));
+  return t.join(' ');
+}
+const COMP_AX={학업:'#3f5fa8',진로:'#b8722e',공동체:'#2f8f6f'};
+// 3분할 역량 비중 막대
+function compMixBar(m){
+  const seg=(w,c,lb)=>`<span style="width:${w.toFixed(1)}%;background:${c}" title="${lb} ${w.toFixed(0)}%">${w>=14?lb.replace('역량','')+' '+Math.round(w)+'%':''}</span>`;
+  return `<div class="cmix">${seg(m.acad,COMP_AX.학업,'학업역량')}${seg(m.career,COMP_AX.진로,'진로역량')}${seg(m.community,COMP_AX.공동체,'공동체역량')}</div>`;
+}
+// Card 1) 역량 강조 전형 참고표
+function naviCompMatchCard(a){
+  const recs=(naviData().jonghap||[]).filter(r=>typeof r.acad==='number'&&typeof r.career==='number'&&typeof r.community==='number');
+  const m=studentCompMix(a);
+  if(!recs.length||!m) return '';
+  const dist=r=>(Math.abs(r.acad-m.acad)+Math.abs(r.career-m.career)+Math.abs(r.community-m.community))/2; // 0~100
+  const ranked=recs.map(r=>({r,sim:Math.max(0,100-dist(r))})).sort((x,y)=>y.sim-x.sim).slice(0,15);
+  const row=({r,sim})=>{
+    const w=`<span class="nv-w"><i style="color:${COMP_AX.학업}">학${Math.round(r.acad)}</i>·<i style="color:${COMP_AX.진로}">진${Math.round(r.career)}</i>·<i style="color:${COMP_AX.공동체}">공${Math.round(r.community)}</i></span>`;
+    const ideal=r.ideal?`<div class="nv-ideal">${esc(r.ideal)}</div>`:'';
+    return `<div class="nv-row"><div class="nv-top"><b>${esc(r.univ||'')}</b> <span class="g">${esc(r.type||'')}</span>${r.region?`<span class="nv-rg">${esc(r.region)}</span>`:''}<span class="nv-sim" title="평가비중 닮은 정도">닮음 ${Math.round(sim)}%</span></div>
+      <div class="nv-meta">${w}${r.minGrade&&r.minGrade!=='없음'?`<span class="nv-min">수능최저 ${esc(r.minGrade)}</span>`:''}${r.interview&&r.interview!=='-'?`<span class="nv-int">면접 ${esc(r.interview)}</span>`:''}</div>${ideal}</div>`;
+  };
+  return `<div class="card"><h2>🏫 역량 강조 전형 참고표 <span style="font-size:12px;color:var(--sub);font-weight:400">— 수시NAVI</span></h2>
+    <div class="desc"><b>합격 가능성 예측이 아닙니다.</b> 대학이 공개한 학종 <b>평가요소 역량 비중</b>(학업/진로/공동체)과 이 학생의 <b>실측 역량 균형</b>이 얼마나 <b>닮았는지</b>만 보여주는 참고 정보입니다. 지원 추천이 아니며, 반드시 각 대학 모집요강을 확인하세요.</div>
+    <div class="nv-me">이 학생 실측 역량 균형 ${compMixBar(m)}<span class="g">(세특·창체·행특의 역량 표현 등장 비율)</span></div>
+    <div class="nv-list">${ranked.map(row).join('')}</div>
+    <div class="note">평가 비중이 비슷하다고 해서 그 전형이 유리·불리하다는 뜻이 아닙니다. '내 강조점이 어떤 평가구조와 통하는지' 감을 잡는 용도입니다. (표본: 학종 ${recs.length}개 전형)</div>
+  </div>`;
+}
+// 인재상 키워드 사전(동의어→대표어, 역량축)
+const IDEAL_KW=[
+  {k:'창의',syn:['창의','독창','창조'],ax:'학업'},
+  {k:'탐구',syn:['탐구','지식탐구','학문','지적'],ax:'학업'},
+  {k:'도전',syn:['도전','개척','열정'],ax:'진로'},
+  {k:'전문성',syn:['전문인','전문성','전문가','전문 '],ax:'진로'},
+  {k:'자기주도',syn:['자기주도','주도적','자율'],ax:'진로'},
+  {k:'융합',syn:['융합','통합','통섭'],ax:'진로'},
+  {k:'글로벌',syn:['글로벌','세계','국제'],ax:'진로'},
+  {k:'협력',syn:['협력','협동','상생','소통','의사소통'],ax:'공동체'},
+  {k:'배려',syn:['배려','나눔','헌신','섬김'],ax:'공동체'},
+  {k:'실천',syn:['실천','실천인','행동'],ax:'공동체'},
+  {k:'리더십',syn:['리더','선도','이끄'],ax:'공동체'},
+  {k:'윤리·인성',syn:['윤리','인성','바른','정직'],ax:'공동체'},
+];
+// Card 2) 인재상 키워드 매칭
+function naviIdealCard(a){
+  const recs=(naviData().jonghap||[]).filter(r=>r.ideal);
+  if(!recs.length) return '';
+  const blob=studentTextBlob(DATA[idx].parsed);
+  const items=IDEAL_KW.map(o=>{
+    const demand=recs.filter(r=>o.syn.some(sy=>r.ideal.includes(sy))).length;
+    const matchedSyn=o.syn.map(s=>s.trim()).find(sy=>blob.includes(sy));
+    return {k:o.k,ax:o.ax,demand,has:!!matchedSyn,syn:matchedSyn};
+  }).filter(o=>o.demand>0).sort((x,y)=>y.demand-x.demand);
+  if(!items.length) return '';
+  const maxD=Math.max(1,...items.map(i=>i.demand)), hasN=items.filter(i=>i.has).length;
+  const chip=o=>{
+    const col=COMP_AX[o.ax];
+    const bar=`<span class="nvi-bar"><span style="width:${Math.round(o.demand/maxD*100)}%;background:${col}"></span></span>`;
+    if(o.has) return `<span class="nvi has" data-kw="${esc(o.syn)}" title="'${esc(o.syn)}' 원문 문장 보기 · 대학 ${o.demand}곳 언급" style="border-color:${col};background:${col}"><b>✓ ${esc(o.k)}</b><small>대학 ${o.demand}곳</small></span>`;
+    return `<span class="nvi" title="내 생기부에서 아직 뚜렷하지 않음 · 대학 ${o.demand}곳 언급"><b>${esc(o.k)}</b><small>대학 ${o.demand}곳</small>${bar}</span>`;
+  };
+  return `<div class="card"><h2>💠 인재상 키워드 매칭 <span style="font-size:12px;color:var(--sub);font-weight:400">— 수시NAVI</span></h2>
+    <div class="desc">여러 대학 <b>인재상 문구</b>에서 자주 나오는 키워드(<span style="color:${COMP_AX.학업}">학업</span>·<span style="color:${COMP_AX.진로}">진로</span>·<span style="color:${COMP_AX.공동체}">공동체</span>축)를, 이 학생 생기부에 <b>실제로 드러났는지</b> 대조했습니다. <b>진하게 채워진 ✓ 칩</b>은 생기부에 나타난 것(클릭 시 원문). 옅은 칩은 아직 뚜렷하지 않은 것으로, ‘대학 N곳’은 그 키워드를 인재상에 넣은 전형 수입니다. 채움 여부는 실측일 뿐 우열 판정이 아닙니다.</div>
+    <div class="nvi-wrap">${items.map(chip).join('')}</div>
+    <div class="note">인재상에 자주 등장하는 키워드 ${items.length}개 중 <b>${hasN}개</b>가 이 학생 생기부에서 확인됩니다.</div>
+  </div>`;
+}
+// Card 3) 진로선택과목 반영 참고 노트
+function naviJinroCard(a){
+  const g=naviData().gyogwa||{};
+  if(!g.univTotal) return '';
+  const pct=Math.round(g.univReflectJinro/g.univTotal*100);
+  return `<div class="card"><h2>📗 진로선택과목 반영 참고 <span style="font-size:12px;color:var(--sub);font-weight:400">— 수시NAVI</span></h2>
+    <div class="desc">수시 <b>교과전형</b> 기준, 조사된 <b>${g.univTotal}개 대학 중 ${g.univReflectJinro}곳(${pct}%)</b>이 <b>진로선택과목 성취도(A/B/C)</b>를 성적에 반영합니다(대학마다 방식 상이). 학종에서도 진로선택 세특은 전공 관심의 핵심 근거가 됩니다.</div>
+    <div class="note">참고용 경향 수치입니다. 개별 대학의 반영 교과·환산 방식은 반드시 모집요강을 확인하세요. 이 학생의 진로선택 세특 내용은 위 <b>‘교과·활동 × 진로 연계’</b>·<b>‘세특 리뷰’</b> 카드에서 근거로 확인할 수 있습니다.</div>
+  </div>`;
+}
 // 호를 따라 눕는 접선 라벨(좁은 조각도 읽히도록 회전) — 왼쪽 절반은 뒤집어 거꾸로 보이지 않게
 function tangentLabel(x,y,cm,text,fontSize,fill,weight){
   let deg=cm*180/Math.PI+90; if(Math.cos(cm)<0) deg+=180;
@@ -576,10 +668,12 @@ function render(){
   const comp=a.competency||[];
   h+=`<div class="card"><h2>🎓 입학사정관 3대 역량 신호</h2>
     <div class="desc">대학 입학사정관 <b>공통 평가요소</b>(학업·진로·공동체 역량, 5개 대학 공동기준) 관점에서, 세특·창체·행동특성 원문에 드러난 표현을 <b>근거와 함께</b> 모았습니다. 어느 역량이 어디서 보이는지를 제시하며, 우열 판정은 하지 않습니다.</div>
-    ${comp.map(g=>`<div class="cgrp"><div class="chd">${g.emoji} ${esc(g.label)} <span class="cn">${g.total}회</span></div><div class="cdesc">${esc(g.desc)}</div>
+    ${(()=>{const shown=new Set();return comp.map(g=>{
+      const ev=(g.top||[]).filter(e=>{if(shown.has(e.text))return false;shown.add(e.text);return true;});
+      return `<div class="cgrp"><div class="chd">${g.emoji} ${esc(g.label)} <span class="cn">${g.total}회</span></div><div class="cdesc">${esc(g.desc)}</div>
       <div class="cbadges">${g.subs.map(s=>`<span class="cbadge${s.n?'':' off'}">${s.emoji} ${esc(s.key)} <b>${s.n}</b></span>`).join('')}</div>
-      ${g.top.map(e=>`<div class="cev"><span class="cev-src">${e.grade}학년·${esc(e.src)}</span> ${T(e.text)}</div>`).join('')||'<div class="cev" style="opacity:.55">이 역량에서 뚜렷한 표현은 확인되지 않았습니다.</div>'}
-    </div>`).join('')}
+      ${ev.length?ev.map(e=>`<div class="cev"><span class="cev-src">${e.grade}학년·${esc(e.src)}</span> ${T(e.text)}</div>`).join(''):`<div class="cev" style="opacity:.55">${g.total?'대표 문장이 다른 역량과 겹쳐 위에 이미 표시했습니다.':'이 역량에서 뚜렷한 표현은 확인되지 않았습니다.'}</div>`}
+    </div>`;}).join('');})()}
     ${a.balance&&a.balance.alerts.length?a.balance.alerts.map(al=>`<div class="balert">⚖️ <b>균형 점검:</b> ${esc(al.text)}</div>`).join(''):(a.balance?`<div class="note" style="color:var(--accent)">⚖️ 학업 ${a.balance.academic} · 진로 ${a.balance.career} · 공동체 ${a.balance.community} — 세 역량이 비교적 고르게 나타납니다.</div>`:'')}
     <div class="note">표현 등장 여부(실측)만 집계합니다. 같은 문장이 여러 역량에 잡힐 수 있으며, 비어 있는 항목은 '해당 표현이 원문에 없다'는 뜻일 뿐 역량 부족을 의미하지 않습니다.</div>
   </div>`;
@@ -640,6 +734,11 @@ function render(){
     <div class="legend">창체 영역별 핵심어: ${hm.areas.map(ar=>`${ar.area} ${ar.byYear.map(y=>y.grade+'학년 '+y.n+'회').join(' / ')}`).join(' &nbsp;·&nbsp; ')}</div>
   </div>`;
 
+  // 2.95) 대학 전형 참고 (수시NAVI 추출 — 합격예측 아님, 공개 평가요소/인재상 참고)
+  h+=naviCompMatchCard(a);
+  h+=naviIdealCard(a);
+  h+=naviJinroCard(a);
+
   // 교사용: 검토 체크리스트 + 원자료
   h+=`<div class="card teacher"><h2>🩺 검토 체크리스트</h2>
     <div class="desc">보완을 검토할 지점 — '부족' 판정이 아니라 근거와 함께 드리는 신호입니다. 판단은 선생님 몫입니다.</div>
@@ -693,6 +792,7 @@ const SECTIONS=[
   {key:'summary', title:'🎓 핵심 요약', open:true,  match:['종합 총평','Key Highlights','성적 강점맵','역량 밸런스']},
   {key:'act',     title:'📚 활동·세특·역량', open:true, match:['창체 진화','세특 리뷰','3대 역량','주도성 행위']},
   {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 히트맵','성장 궤적','활동 밀도','진로 일관성','융합 지도','키워드 연결 네트워크','교과·활동 × 진로','썬버스트','합격 기준']},
+  {key:'navi',    title:'🏫 대학 전형 참고 (수시NAVI)', open:false, match:['역량 강조 전형','인재상 키워드','진로선택과목 반영']},
   {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','심화 탐구','Weak Spots','Next Step','면접·상담']},
   {key:'raw',     title:'📊 원자료', open:false, match:['성적 상세']},
 ];
