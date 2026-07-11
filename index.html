@@ -210,6 +210,18 @@ svg{max-width:100%;height:auto}
 .nvi-bar{display:block;height:4px;background:#eef1f4;border-radius:3px;overflow:hidden;margin-top:2px}
 .nvi-bar span{display:block;height:100%;border-radius:3px;opacity:.65}
 
+/* ── 윤문 점검 ── */
+.pl-badges{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
+.pl-badge{font-size:11.5px;border:1.5px solid;border-radius:20px;padding:2px 10px;background:#fff}
+.pl-badge b{font-weight:800}
+.pl-item{border:1px solid var(--line);border-left:3px solid var(--line);border-radius:8px;padding:8px 10px;margin:7px 0;background:#fbfcfd}
+.pl-src{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;font-weight:700;margin-bottom:4px}
+.pl-src .g{color:var(--sub);font-weight:400}
+.pl-chip{color:#fff;font-size:10.5px;font-weight:700;border-radius:5px;padding:1px 7px}
+.pl-txt{font-size:13px;line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
+.pl-h{background:#fff3d6;border-radius:3px;padding:0 2px;box-shadow:inset 0 -2px 0 #f0c96b}
+.pl-adv{font-size:11.5px;color:var(--sub);margin-top:4px;padding-left:9px;border-left:2px solid var(--line)}
+
 .dropzone{border:2px dashed var(--line);border-radius:14px;padding:40px 20px;text-align:center;color:var(--sub);background:#fff;cursor:pointer;margin:14px 0;transition:.15s}
 .dropzone:hover,.dropzone.hot{border-color:var(--accent);background:var(--soft);color:var(--accent)}
 .dropzone b{color:var(--ink);font-size:15px;display:block;margin-bottom:4px}
@@ -1509,6 +1521,65 @@ function applyCustomDict(custom = {}) {
   return custom;
 }
 
+/* ── 윤문 점검(규칙 기반·로컬) ──
+   세특·창체 원문 문장에서 '다듬을 후보' 지점만 신호로 표시. 맞춤법 교정기가 아니라 검토 보조.
+   외부 전송 없이 브라우저 안에서만 동작(도구 핵심 원칙 유지). */
+const POLISH = {
+  // 구체 근거 없이 남발되면 설득력이 떨어지는 평가어(상투어)
+  cliche: ['성실히', '성실하게', '성실한 태도', '열심히', '적극적으로', '최선을 다', '뛰어난', '뛰어나게', '훌륭한', '훌륭히', '우수한', '우수하게', '인상적', '돋보', '열정적으로', '활발히', '능동적으로', '바람직', '모범적', '깊은 관심', '많은 관심', '많은 노력', '바른 태도', '보기 좋'],
+  // 이중·과잉 피동(피동 어간에 '-어지다'가 다시 붙은 명백한 이중피동만 — 오탐 방지)
+  passive: ['되어지', '보여지', '불려지', '쓰여지', '읽혀지', '잊혀지', '놓여지', '담겨지', '나뉘어지', '바뀌어지', '모아지', '생각되어지'],
+  // 번역투(한 문장에 반복되면 다듬을 후보)
+  translationese: ['에 대하여', '에 대한', '에 대해', '을 통하여', '를 통하여', '을 통해', '를 통해', '에 의하여', '에 의해'],
+  // 학생부 기재 금지/유의 소지(고신뢰 표지만)
+  neis: ['toeic', 'toefl', 'teps', '토익', '토플', '텝스', 'hsk', 'jlpt', '오픽', 'opic', 'ielts', '아이엘츠', '토셀', 'toeic speaking', '논문 게재', '학회지', '저널에 게재', '교외 대회', '교외대회'],
+};
+// 문장 종결 형식 판별: 명사형('~함/음/됨') vs 서술형('~다/요')
+function endStyle(sent) {
+  const s = sent.replace(/["'’”)\]\s.]+$/, '');
+  const last = s.slice(-1); if (!last) return null;
+  const code = last.charCodeAt(0);
+  if (code >= 0xAC00 && code <= 0xD7A3) {
+    const jong = (code - 0xAC00) % 28;
+    if (jong === 16) return '명사형';                 // ㅁ 받침 = 명사형 종결
+    if (/[다요죠까]$/.test(s)) return '서술형';
+    return null;
+  }
+  return null;                                        // 영문·숫자로 끝나면 판단 보류
+}
+function polishReview(r) {
+  const an = { autonomy: '자율활동', club: '동아리', career: '진로활동' };
+  const raw = [];
+  r.details.forEach(d => d.text && raw.push({ src: d.subject, grade: d.grade, type: '세특', text: d.text }));
+  ['autonomy', 'club', 'career'].forEach(k => (r.creative[k] || []).forEach(a => a.text && raw.push({ src: an[k], grade: a.grade, type: '창체', text: a.text })));
+  const sents = [];
+  raw.forEach(o => o.text.split(/(?<=[가-힣)])\.\s+/).forEach(t => { t = t.trim().replace(/\s+/g, ' '); if (t.length >= 10) sents.push({ ...o, s: t }); }));
+  let nom = 0, decl = 0;
+  sents.forEach(o => { const e = endStyle(o.s); if (e === '명사형') nom++; else if (e === '서술형') decl++; });
+  const dominant = nom >= decl ? '명사형' : '서술형';
+  const styleMixed = nom > 0 && decl > 0;
+  const findAll = (text, arr) => { const low = text.toLowerCase(), hit = []; arr.forEach(k => { if (low.includes(k.toLowerCase()) && !hit.includes(k)) hit.push(k); }); return hit; };
+  const byType = { 금지표현: 0, 이중피동: 0, 상투어: 0, 번역투: 0, 장문: 0, 종결어미: 0 };
+  const items = [];
+  sents.forEach(o => {
+    const t = o.s, issues = [];
+    const neis = findAll(t, POLISH.neis);
+    if (neis.length) { issues.push({ tag: '금지표현', tokens: neis, sev: 3, advice: '학생부 기재 금지 소지(어학성적·교외 수상·논문 등). 규정을 반드시 확인하세요.' }); byType.금지표현++; }
+    const pas = findAll(t, POLISH.passive);
+    if (pas.length) { issues.push({ tag: '이중피동', tokens: pas, sev: 2, advice: '이중·과잉 피동입니다. ‘되다/보이다’처럼 바로잡으세요(예: 보여진다→보인다).' }); byType.이중피동++; }
+    const cl = findAll(t, POLISH.cliche);
+    if (cl.length >= 2) { issues.push({ tag: '상투어', tokens: cl, sev: 1, advice: '평가어가 몰려 있습니다. 무엇을 어떻게 했는지 구체 행동·결과로 바꾸면 설득력이 높아집니다.' }); byType.상투어++; }
+    const tr = findAll(t, POLISH.translationese);
+    if (tr.length >= 2) { issues.push({ tag: '번역투', tokens: tr, sev: 1, advice: '‘~에 대한/~을 통해’가 반복됩니다. 간결한 서술로 다듬어 보세요.' }); byType.번역투++; }
+    const commas = (t.match(/,/g) || []).length;
+    if (t.length >= 150 || commas >= 7) { issues.push({ tag: '장문', tokens: [], sev: 1, advice: `한 문장이 ${t.length}자로 깁니다. 2~3문장으로 나누면 읽기 쉽습니다.` }); byType.장문++; }
+    if (styleMixed) { const e = endStyle(t); if (e && e !== dominant) { issues.push({ tag: '종결어미', tokens: [], sev: 1, advice: `생기부는 ‘${dominant}’ 종결로 통일하는 것이 관례인데 이 문장은 ‘${e}’입니다.` }); byType.종결어미++; } }
+    if (issues.length) items.push({ src: o.src, grade: o.grade, type: o.type, text: t, issues, sev: Math.max(...issues.map(i => i.sev)) });
+  });
+  items.sort((a, b) => b.sev - a.sev || b.issues.length - a.issues.length);
+  return { total: sents.length, flagged: items.length, byType, dominant, items };
+}
+
 function analyze(r, setName = '생명·과학') {
   const heatmap = keywordHeatmap(r, setName);
   const thread = careerThread(r, setName);
@@ -1544,6 +1615,7 @@ function analyze(r, setName = '생명·과학') {
     interview: interviewQuestions(r, setName, { thread, inquiry, advanced, fusion, competency }),
     nextSteps: nextSteps(r, setName, { heatmap, thread, actions, inquiry, fusion }),
     profile: profile(r, setName),
+    polish: polishReview(r),
     hope: r.creative.hope,
   };
 }
@@ -2034,6 +2106,28 @@ function naviJinroCard(a){
     <div class="note">참고용 경향 수치입니다. 개별 대학의 반영 교과·환산 방식은 반드시 모집요강을 확인하세요. 이 학생의 진로선택 세특 내용은 위 <b>‘교과·활동 × 진로 연계’</b>·<b>‘세특 리뷰’</b> 카드에서 근거로 확인할 수 있습니다.</div>
   </div>`;
 }
+// 윤문 점검 카드(규칙 기반·로컬 — 세특·창체 원문의 다듬을 후보를 신호로)
+const PL_TAGC={금지표현:'#c0392b',이중피동:'#b8722e',상투어:'#3f5fa8',번역투:'#7a5aa8',장문:'#2f8f6f',종결어미:'#8a6d3b'};
+function polishCard(a){
+  const pr=a.polish; if(!pr||!pr.total) return '';
+  const order=['금지표현','이중피동','상투어','번역투','장문','종결어미'];
+  const badges=order.filter(k=>pr.byType[k]>0).map(k=>`<span class="pl-badge" style="border-color:${PL_TAGC[k]};color:${PL_TAGC[k]}">${k} <b>${pr.byType[k]}</b></span>`).join('');
+  const SHOW=15;
+  const rows=pr.items.slice(0,SHOW).map(it=>{
+    let html=esc(maskText(it.text));
+    const toks=[...new Set(it.issues.flatMap(i=>i.tokens))].filter(Boolean).sort((x,y)=>y.length-x.length);
+    toks.forEach(tk=>{ try{ html=html.replace(new RegExp(_rx(tk),'gi'),m=>`<mark class="pl-h">${m}</mark>`); }catch(e){} });
+    const chips=it.issues.map(i=>`<span class="pl-chip" style="background:${PL_TAGC[i.tag]}">${i.tag}</span>`).join('');
+    const adv=it.issues.map(i=>`<div class="pl-adv">${esc(i.advice)}</div>`).join('');
+    return `<div class="pl-item"><div class="pl-src">${it.grade!=null?it.grade+'학년·':''}${esc(it.src)} <span class="g">${esc(it.type)}</span> ${chips}</div><div class="pl-txt">${html}</div>${adv}</div>`;
+  }).join('');
+  return `<div class="card teacher"><h2>✍️ 윤문 점검 <span style="font-size:12px;color:var(--sub);font-weight:400">— 문장 다듬기 제안</span></h2>
+    <div class="desc">세특·창체 <b>원문 문장</b>에서 다듬을 후보 지점을 <b>규칙 기반</b>으로 짚어줍니다(맞춤법 교정기가 아니라 검토 보조 — 상투어·장문·이중피동·번역투·종결어미 혼용·기재금지 소지). <b>모든 처리는 이 브라우저 안에서만 이뤄지며 원문은 외부로 전송되지 않습니다.</b> 최종 수정·판단은 선생님 몫입니다.</div>
+    <div class="pl-badges">${badges||'<span class="g">특이 사항 없음</span>'}</div>
+    <div class="note">문장 <b>${pr.total}개</b> 중 <b>${pr.flagged}개</b>에서 다듬을 후보를 찾았습니다${pr.flagged>SHOW?` (심각도순 상위 ${SHOW}개 표시)`:''} · 종결어미 우세 형식: <b>${esc(pr.dominant)}</b>.</div>
+    ${rows||'<div class="note">다듬을 후보가 두드러지지 않습니다 — 문장이 대체로 정돈되어 있습니다.</div>'}
+  </div>`;
+}
 // 호를 따라 눕는 접선 라벨(좁은 조각도 읽히도록 회전) — 왼쪽 절반은 뒤집어 거꾸로 보이지 않게
 function tangentLabel(x,y,cm,text,fontSize,fill,weight){
   let deg=cm*180/Math.PI+90; if(Math.cos(cm)<0) deg+=180;
@@ -2327,6 +2421,9 @@ function render(){
     <div class="note">가장 강한 진로 연계 활동: ${hm.subjects.filter(s=>s.n>0).slice(0,3).map(s=>s.subject+'('+s.n+')').join(', ')}</div>
   </div>`;
 
+  // 윤문 점검(교사용 — 세특·창체 원문 다듬기 제안, 로컬 처리)
+  h+=polishCard(a);
+
   // 심화 탐구 신호(교사용 진단) — 제미나이 명문대 코어 기반, 등장 여부만
   const adv=a.advanced;
   h+=`<div class="card teacher"><h2>🔬 심화 탐구 신호</h2>
@@ -2374,7 +2471,7 @@ const SECTIONS=[
   {key:'act',     title:'📚 활동·세특·역량', open:true, match:['창체 진화','세특 리뷰','3대 역량','주도성 행위']},
   {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 히트맵','활동 밀도','진로 일관성','키워드 연결 네트워크','교과·활동 × 진로','합격 기준']},
   {key:'navi',    title:'🏫 대학 전형 참고 (수시NAVI)', open:false, match:['역량 강조 전형','인재상 키워드','진로선택과목 반영']},
-  {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','심화 탐구','Weak Spots','Next Step','면접·상담']},
+  {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','윤문 점검','심화 탐구','Weak Spots','Next Step','면접·상담']},
   {key:'raw',     title:'📊 원자료', open:false, match:['성적 상세']},
 ];
 window.__secOpen=window.__secOpen||{};

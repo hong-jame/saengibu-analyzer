@@ -764,6 +764,65 @@ export function applyCustomDict(custom = {}) {
   return custom;
 }
 
+/* ── 윤문 점검(규칙 기반·로컬) ──
+   세특·창체 원문 문장에서 '다듬을 후보' 지점만 신호로 표시. 맞춤법 교정기가 아니라 검토 보조.
+   외부 전송 없이 브라우저 안에서만 동작(도구 핵심 원칙 유지). */
+export const POLISH = {
+  // 구체 근거 없이 남발되면 설득력이 떨어지는 평가어(상투어)
+  cliche: ['성실히', '성실하게', '성실한 태도', '열심히', '적극적으로', '최선을 다', '뛰어난', '뛰어나게', '훌륭한', '훌륭히', '우수한', '우수하게', '인상적', '돋보', '열정적으로', '활발히', '능동적으로', '바람직', '모범적', '깊은 관심', '많은 관심', '많은 노력', '바른 태도', '보기 좋'],
+  // 이중·과잉 피동(피동 어간에 '-어지다'가 다시 붙은 명백한 이중피동만 — 오탐 방지)
+  passive: ['되어지', '보여지', '불려지', '쓰여지', '읽혀지', '잊혀지', '놓여지', '담겨지', '나뉘어지', '바뀌어지', '모아지', '생각되어지'],
+  // 번역투(한 문장에 반복되면 다듬을 후보)
+  translationese: ['에 대하여', '에 대한', '에 대해', '을 통하여', '를 통하여', '을 통해', '를 통해', '에 의하여', '에 의해'],
+  // 학생부 기재 금지/유의 소지(고신뢰 표지만)
+  neis: ['toeic', 'toefl', 'teps', '토익', '토플', '텝스', 'hsk', 'jlpt', '오픽', 'opic', 'ielts', '아이엘츠', '토셀', 'toeic speaking', '논문 게재', '학회지', '저널에 게재', '교외 대회', '교외대회'],
+};
+// 문장 종결 형식 판별: 명사형('~함/음/됨') vs 서술형('~다/요')
+function endStyle(sent) {
+  const s = sent.replace(/["'’”)\]\s.]+$/, '');
+  const last = s.slice(-1); if (!last) return null;
+  const code = last.charCodeAt(0);
+  if (code >= 0xAC00 && code <= 0xD7A3) {
+    const jong = (code - 0xAC00) % 28;
+    if (jong === 16) return '명사형';                 // ㅁ 받침 = 명사형 종결
+    if (/[다요죠까]$/.test(s)) return '서술형';
+    return null;
+  }
+  return null;                                        // 영문·숫자로 끝나면 판단 보류
+}
+export function polishReview(r) {
+  const an = { autonomy: '자율활동', club: '동아리', career: '진로활동' };
+  const raw = [];
+  r.details.forEach(d => d.text && raw.push({ src: d.subject, grade: d.grade, type: '세특', text: d.text }));
+  ['autonomy', 'club', 'career'].forEach(k => (r.creative[k] || []).forEach(a => a.text && raw.push({ src: an[k], grade: a.grade, type: '창체', text: a.text })));
+  const sents = [];
+  raw.forEach(o => o.text.split(/(?<=[가-힣)])\.\s+/).forEach(t => { t = t.trim().replace(/\s+/g, ' '); if (t.length >= 10) sents.push({ ...o, s: t }); }));
+  let nom = 0, decl = 0;
+  sents.forEach(o => { const e = endStyle(o.s); if (e === '명사형') nom++; else if (e === '서술형') decl++; });
+  const dominant = nom >= decl ? '명사형' : '서술형';
+  const styleMixed = nom > 0 && decl > 0;
+  const findAll = (text, arr) => { const low = text.toLowerCase(), hit = []; arr.forEach(k => { if (low.includes(k.toLowerCase()) && !hit.includes(k)) hit.push(k); }); return hit; };
+  const byType = { 금지표현: 0, 이중피동: 0, 상투어: 0, 번역투: 0, 장문: 0, 종결어미: 0 };
+  const items = [];
+  sents.forEach(o => {
+    const t = o.s, issues = [];
+    const neis = findAll(t, POLISH.neis);
+    if (neis.length) { issues.push({ tag: '금지표현', tokens: neis, sev: 3, advice: '학생부 기재 금지 소지(어학성적·교외 수상·논문 등). 규정을 반드시 확인하세요.' }); byType.금지표현++; }
+    const pas = findAll(t, POLISH.passive);
+    if (pas.length) { issues.push({ tag: '이중피동', tokens: pas, sev: 2, advice: '이중·과잉 피동입니다. ‘되다/보이다’처럼 바로잡으세요(예: 보여진다→보인다).' }); byType.이중피동++; }
+    const cl = findAll(t, POLISH.cliche);
+    if (cl.length >= 2) { issues.push({ tag: '상투어', tokens: cl, sev: 1, advice: '평가어가 몰려 있습니다. 무엇을 어떻게 했는지 구체 행동·결과로 바꾸면 설득력이 높아집니다.' }); byType.상투어++; }
+    const tr = findAll(t, POLISH.translationese);
+    if (tr.length >= 2) { issues.push({ tag: '번역투', tokens: tr, sev: 1, advice: '‘~에 대한/~을 통해’가 반복됩니다. 간결한 서술로 다듬어 보세요.' }); byType.번역투++; }
+    const commas = (t.match(/,/g) || []).length;
+    if (t.length >= 150 || commas >= 7) { issues.push({ tag: '장문', tokens: [], sev: 1, advice: `한 문장이 ${t.length}자로 깁니다. 2~3문장으로 나누면 읽기 쉽습니다.` }); byType.장문++; }
+    if (styleMixed) { const e = endStyle(t); if (e && e !== dominant) { issues.push({ tag: '종결어미', tokens: [], sev: 1, advice: `생기부는 ‘${dominant}’ 종결로 통일하는 것이 관례인데 이 문장은 ‘${e}’입니다.` }); byType.종결어미++; } }
+    if (issues.length) items.push({ src: o.src, grade: o.grade, type: o.type, text: t, issues, sev: Math.max(...issues.map(i => i.sev)) });
+  });
+  items.sort((a, b) => b.sev - a.sev || b.issues.length - a.issues.length);
+  return { total: sents.length, flagged: items.length, byType, dominant, items };
+}
+
 export function analyze(r, setName = '생명·과학') {
   const heatmap = keywordHeatmap(r, setName);
   const thread = careerThread(r, setName);
@@ -799,6 +858,7 @@ export function analyze(r, setName = '생명·과학') {
     interview: interviewQuestions(r, setName, { thread, inquiry, advanced, fusion, competency }),
     nextSteps: nextSteps(r, setName, { heatmap, thread, actions, inquiry, fusion }),
     profile: profile(r, setName),
+    polish: polishReview(r),
     hope: r.creative.hope,
   };
 }

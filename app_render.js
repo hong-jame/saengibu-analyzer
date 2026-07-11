@@ -425,6 +425,28 @@ function naviJinroCard(a){
     <div class="note">참고용 경향 수치입니다. 개별 대학의 반영 교과·환산 방식은 반드시 모집요강을 확인하세요. 이 학생의 진로선택 세특 내용은 위 <b>‘교과·활동 × 진로 연계’</b>·<b>‘세특 리뷰’</b> 카드에서 근거로 확인할 수 있습니다.</div>
   </div>`;
 }
+// 윤문 점검 카드(규칙 기반·로컬 — 세특·창체 원문의 다듬을 후보를 신호로)
+const PL_TAGC={금지표현:'#c0392b',이중피동:'#b8722e',상투어:'#3f5fa8',번역투:'#7a5aa8',장문:'#2f8f6f',종결어미:'#8a6d3b'};
+function polishCard(a){
+  const pr=a.polish; if(!pr||!pr.total) return '';
+  const order=['금지표현','이중피동','상투어','번역투','장문','종결어미'];
+  const badges=order.filter(k=>pr.byType[k]>0).map(k=>`<span class="pl-badge" style="border-color:${PL_TAGC[k]};color:${PL_TAGC[k]}">${k} <b>${pr.byType[k]}</b></span>`).join('');
+  const SHOW=15;
+  const rows=pr.items.slice(0,SHOW).map(it=>{
+    let html=esc(maskText(it.text));
+    const toks=[...new Set(it.issues.flatMap(i=>i.tokens))].filter(Boolean).sort((x,y)=>y.length-x.length);
+    toks.forEach(tk=>{ try{ html=html.replace(new RegExp(_rx(tk),'gi'),m=>`<mark class="pl-h">${m}</mark>`); }catch(e){} });
+    const chips=it.issues.map(i=>`<span class="pl-chip" style="background:${PL_TAGC[i.tag]}">${i.tag}</span>`).join('');
+    const adv=it.issues.map(i=>`<div class="pl-adv">${esc(i.advice)}</div>`).join('');
+    return `<div class="pl-item"><div class="pl-src">${it.grade!=null?it.grade+'학년·':''}${esc(it.src)} <span class="g">${esc(it.type)}</span> ${chips}</div><div class="pl-txt">${html}</div>${adv}</div>`;
+  }).join('');
+  return `<div class="card teacher"><h2>✍️ 윤문 점검 <span style="font-size:12px;color:var(--sub);font-weight:400">— 문장 다듬기 제안</span></h2>
+    <div class="desc">세특·창체 <b>원문 문장</b>에서 다듬을 후보 지점을 <b>규칙 기반</b>으로 짚어줍니다(맞춤법 교정기가 아니라 검토 보조 — 상투어·장문·이중피동·번역투·종결어미 혼용·기재금지 소지). <b>모든 처리는 이 브라우저 안에서만 이뤄지며 원문은 외부로 전송되지 않습니다.</b> 최종 수정·판단은 선생님 몫입니다.</div>
+    <div class="pl-badges">${badges||'<span class="g">특이 사항 없음</span>'}</div>
+    <div class="note">문장 <b>${pr.total}개</b> 중 <b>${pr.flagged}개</b>에서 다듬을 후보를 찾았습니다${pr.flagged>SHOW?` (심각도순 상위 ${SHOW}개 표시)`:''} · 종결어미 우세 형식: <b>${esc(pr.dominant)}</b>.</div>
+    ${rows||'<div class="note">다듬을 후보가 두드러지지 않습니다 — 문장이 대체로 정돈되어 있습니다.</div>'}
+  </div>`;
+}
 // 호를 따라 눕는 접선 라벨(좁은 조각도 읽히도록 회전) — 왼쪽 절반은 뒤집어 거꾸로 보이지 않게
 function tangentLabel(x,y,cm,text,fontSize,fill,weight){
   let deg=cm*180/Math.PI+90; if(Math.cos(cm)<0) deg+=180;
@@ -718,6 +740,9 @@ function render(){
     <div class="note">가장 강한 진로 연계 활동: ${hm.subjects.filter(s=>s.n>0).slice(0,3).map(s=>s.subject+'('+s.n+')').join(', ')}</div>
   </div>`;
 
+  // 윤문 점검(교사용 — 세특·창체 원문 다듬기 제안, 로컬 처리)
+  h+=polishCard(a);
+
   // 심화 탐구 신호(교사용 진단) — 제미나이 명문대 코어 기반, 등장 여부만
   const adv=a.advanced;
   h+=`<div class="card teacher"><h2>🔬 심화 탐구 신호</h2>
@@ -765,7 +790,7 @@ const SECTIONS=[
   {key:'act',     title:'📚 활동·세특·역량', open:true, match:['창체 진화','세특 리뷰','3대 역량','주도성 행위']},
   {key:'career',  title:'🎯 진로·전공 심화', open:true, match:['자동 추천','키워드 히트맵','활동 밀도','진로 일관성','키워드 연결 네트워크','교과·활동 × 진로','합격 기준']},
   {key:'navi',    title:'🏫 대학 전형 참고 (수시NAVI)', open:false, match:['역량 강조 전형','인재상 키워드','진로선택과목 반영']},
-  {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','심화 탐구','Weak Spots','Next Step','면접·상담']},
+  {key:'teacher', title:'👨‍🏫 교사용 진단·상담', open:false, match:['검토 체크','윤문 점검','심화 탐구','Weak Spots','Next Step','면접·상담']},
   {key:'raw',     title:'📊 원자료', open:false, match:['성적 상세']},
 ];
 window.__secOpen=window.__secOpen||{};
