@@ -265,7 +265,7 @@
   <!-- ===== SETUP ===== -->
   <section class="setup" id="setup">
     <div class="setup-head" onclick="document.getElementById('setup').classList.toggle('closed')">
-      <h2>① 입력 · 설정</h2><span class="sub" style="margin:0">내신 성적 · 키워드 사전 · 활동 원문(붙여넣기 자동 분할) · 희망 학과</span><span class="chev">▾</span>
+      <h2>① 입력 · 설정</h2><span class="sub" style="margin:0">생기부 PDF 자동 인식 · 내신 성적 · 키워드 사전 · 희망 학과</span><span class="chev">▾</span>
     </div>
     <div class="setup-body">
       <div class="grid-3">
@@ -291,9 +291,7 @@
         <div>
           <div class="bulk-box">
             <div class="bh">⚡ NEIS 생기부 PDF → 내신·활동 자동 분석</div>
-            <div class="dropzone" id="pdfDrop" style="margin-bottom:8px"><input type="file" id="pdfFile" accept=".pdf" style="display:none" onchange="handlePdf(this.files[0])"/><b>대입전형자료·생활기록부 PDF</b>를 올리면 석차등급·세특·창체·행특을 자동 추출해 바로 분석<div class="file-hint" id="pdfHint">스캔 이미지 PDF는 인식 불가 · 아래에 직접 붙여넣기도 가능</div></div>
-            <textarea id="bulkText" rows="4" placeholder="(NEIS PDF가 아닐 때) 세특/창체 전체를 붙여넣으세요. '1학년','2학기' 표시를 인식해 나눕니다."></textarea>
-            <div style="display:flex;gap:8px;margin-top:8px"><button class="btn primary small" onclick="doAutoSplit()">자동 분할 →</button><span class="file-hint" id="splitHint" style="align-self:center"></span></div>
+            <div class="dropzone" id="pdfDrop"><input type="file" id="pdfFile" accept=".pdf" style="display:none" onchange="handlePdf(this.files[0])"/><b>대입전형자료·생활기록부 PDF</b>를 올리면 석차등급·세특·창체·행특을 자동 추출해 바로 분석<div class="file-hint" id="pdfHint">스캔 이미지 PDF는 인식 불가</div></div>
           </div>
           <div class="block-title" style="color:var(--care)"><span class="dot" style="background:var(--care)"></span>활동 항목 (확인·수정)</div>
           <div id="entryEditor"></div>
@@ -558,17 +556,6 @@ function gaugeArcs(ix,bc){
 }
 function gaugeSvg(ix,bc){return `<svg viewBox="0 0 240 160" width="100%" style="max-width:250px;display:block;margin:0 auto" role="img" aria-label="종합 준비도 지수 ${ix}점">${gaugeArcs(ix,bc)}</svg>`;}
 
-/* ===== 자동 분할 ===== */
-function autoSplit(raw){const text=(raw||'').replace(/\r/g,'').trim();if(!text)return [];
-  const buckets={};SEMS.forEach(s=>buckets[s]='');const re=/([1-3])\s*학년|([1-2])\s*학기/g;let year=null,term=null,last=0,m;const segs=[];
-  while((m=re.exec(text))!==null){const chunk=text.slice(last,m.index).trim();if(chunk)segs.push({year,term,chunk});if(m[1])year=+m[1];if(m[2])term=+m[2];last=re.lastIndex;}
-  const tail=text.slice(last).trim();if(tail)segs.push({year,term,chunk:tail});
-  segs.forEach(s=>{const y=s.year||1,t=s.term||1;const sem=`${y}-${t}`;const key=buckets[sem]!==undefined?sem:`${y}-1`;buckets[key]+=(buckets[key]?'\n':'')+s.chunk;});
-  const out=[];SEMS.forEach(s=>{if(buckets[s].trim())out.push({sem:s,area:'세특',subj:'',text:buckets[s].trim()});});
-  if(!out.length)out.push({sem:'1-1',area:'세특',subj:'',text});return out;}
-function doAutoSplit(){const raw=document.getElementById('bulkText').value;if(!raw.trim()){document.getElementById('splitHint').textContent='붙여넣은 내용이 없습니다.';return;}
-  ENTRIES=autoSplit(raw);renderEntries();document.getElementById('splitHint').textContent=`${ENTRIES.length}개 학기로 분할됨`;}
-
 /* ===== 에디터 ===== */
 function renderCompEditor(){let html='';groupsOrder().forEach(g=>{html+=`<div class="grp"><div class="grp-h" style="color:${groupColor(g)}"><span class="pill" style="background:${groupColor(g)}"></span>${g}</div>`;
   COMP.forEach((c,i)=>{if(c.group!==g)return;html+=`<div class="comp-row"><input type="color" style="width:20px;height:26px;padding:0;border:none;background:none" value="${c.color}" oninput="COMP[${i}].color=this.value"/><span class="cname">${esc(c.name)}</span><input type="text" class="ckw" value="${esc(c.kw.join(', '))}" oninput="COMP[${i}].kw=this.value.split(',').map(s=>s.trim()).filter(Boolean)"/></div>`;});html+='</div>';});document.getElementById('compEditor').innerHTML=html;}
@@ -682,16 +669,15 @@ async function handlePdf(file){if(!file)return;if(typeof pdfjsLib==='undefined')
   document.getElementById('pdfHint').textContent='추출 중…';
   try{const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:buf}).promise;let out='';
     for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p);const c=await pg.getTextContent();out+=c.items.map(it=>it.str).join(' ')+'\n';}
-    if(out.replace(/\s/g,'').length<300){document.getElementById('pdfHint').textContent='텍스트가 거의 없습니다(스캔 이미지 PDF일 수 있음).';document.getElementById('bulkText').value=out.trim();return;}
+    if(out.replace(/\s/g,'').length<300){document.getElementById('pdfHint').textContent='텍스트가 거의 없습니다 — 스캔 이미지 PDF는 인식할 수 없습니다.';return;}
     // NEIS 생기부(대입전형자료) 자동 인식
     if(/교과학습발달상황|세\s*부\s*능\s*력|창\s*의\s*적\s*체\s*험/.test(out)){
       const r=parseNEIS(out);
       const fnm=(file.name||'').replace(/\.[^.]+$/,'').replace(/[\d\-_]+/g,' ').match(/[가-힣]{2,4}/);
       applyParsed(r, r.name||(fnm?fnm[0]:''));
       document.getElementById('pdfHint').textContent=`${pdf.numPages}쪽 · NEIS 생기부 인식 → 자동 채움 완료`;
-      document.getElementById('bulkText').value='';
     }else{
-      document.getElementById('bulkText').value=out.trim();document.getElementById('pdfHint').textContent=`${pdf.numPages}쪽 추출 · '자동 분할' 클릭`;
+      document.getElementById('pdfHint').textContent=`${pdf.numPages}쪽 추출 · NEIS 생기부 형식이 아닙니다(수동 입력 필요).`;
     }
   }catch(err){document.getElementById('pdfHint').textContent='추출 실패: '+err.message;}}
 /* 파서 결과를 도구 데이터모델(STUDENT/GRADES/ENTRIES)에 반영 후 분석 실행 */
