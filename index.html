@@ -394,9 +394,9 @@
   <div class="grid g3" id="gradeStrip" style="margin-bottom:16px"></div>
   <div class="grid g2">
     <div class="panel"><div class="panel-head"><div class="eyebrow">Trend</div><h3>학기별 등급 추이</h3><p>위로 갈수록 우수(1등급). 하향 곡선이 성장 신호</p></div>
-      <div class="panel-body"><div id="gradeTrend" class="plot"></div><div class="empty" id="gradeTrendEmpty">성적 입력 후 '분석 실행'<br/><button class="btn ghost small" style="margin-top:8px" onclick="openGradeEditor()">✏️ 성적 직접 입력하기</button></div></div></div>
+      <div class="panel-body"><div id="gradeTrend" class="plot"></div><div class="empty" id="gradeTrendEmpty">성적이 비어 있습니다 · 스캔·OCR 생기부면 이미지에서 다시 읽어보세요<br/><button class="btn ghost small" style="margin-top:8px" onclick="runReOcr()">🔍 이미지에서 다시 읽기(OCR)</button><br/><button class="btn ghost small" style="margin-top:6px" onclick="openGradeEditor()">✏️ 성적 직접 입력</button></div></div></div>
     <div class="panel"><div class="panel-head"><div class="eyebrow">By subject</div><h3>과목별 등급 히트맵</h3><p>초록=우수 · 붉음=취약</p></div>
-      <div class="panel-body"><div id="gradeHeat" class="plot"></div><div class="empty" id="gradeHeatEmpty">성적 입력 후 '분석 실행'<br/><button class="btn ghost small" style="margin-top:8px" onclick="openGradeEditor()">✏️ 성적 직접 입력하기</button></div></div></div>
+      <div class="panel-body"><div id="gradeHeat" class="plot"></div><div class="empty" id="gradeHeatEmpty">성적이 비어 있습니다 · 스캔·OCR 생기부면 이미지에서 다시 읽어보세요<br/><button class="btn ghost small" style="margin-top:8px" onclick="runReOcr()">🔍 이미지에서 다시 읽기(OCR)</button><br/><button class="btn ghost small" style="margin-top:6px" onclick="openGradeEditor()">✏️ 성적 직접 입력</button></div></div></div>
   </div>
 
   <!-- ===== 처방 ===== -->
@@ -763,7 +763,10 @@ async function handlePdf(file){if(!file)return;if(typeof pdfjsLib==='undefined')
 /* 스캔/OCR손상 생기부: pdf.js로 페이지를 이미지로 렌더 → Tesseract로 직접 재인식 → parseNEIS. 브라우저 안에서만 처리, 외부 전송 없음. */
 async function runReOcr(){
   const hint=document.getElementById('pdfHint');
-  if(!LAST_PDF){hint.textContent='먼저 PDF를 올려주세요.';return;}
+  const setup=document.getElementById('setup');
+  const showPanel=()=>{if(setup)setup.classList.remove('closed');if(hint&&hint.scrollIntoView)hint.scrollIntoView({behavior:'smooth',block:'center'});};
+  showPanel(); // analyze()가 업로드 패널을 접어두므로, 진행상황이 보이도록 다시 펼침
+  if(!LAST_PDF){hint.textContent='먼저 생기부 PDF를 올려주세요.';return;}
   if(typeof Tesseract==='undefined'){hint.textContent='OCR 라이브러리를 불러오지 못했습니다(최초 실행 시 인터넷 연결이 필요합니다).';return;}
   hint.textContent='OCR 준비 중… (최초 1회 한글 데이터 다운로드로 조금 걸립니다)';
   try{
@@ -780,15 +783,17 @@ async function runReOcr(){
       cv.width=cv.height=0;
     }
     await worker.terminate();
+    let msg;
     if(/교과학습발달상황|세\s*부\s*능\s*력|창\s*의\s*적\s*체\s*험/.test(out)){
       const r=parseNEIS(out);
-      applyParsed(r, r.name||LAST_FNAME);
+      applyParsed(r, r.name||LAST_FNAME); // analyze()가 다시 패널을 접음 → 아래에서 재노출
       const gN=r.grades.length, eN=r.entries.length;
-      hint.innerHTML=`✅ OCR 재인식 완료 → 세특·활동 ${eN}건 자동 채움. `+(gN?`성적 ${gN}과목(값 검수 권장). `:`<b>성적표는 인식이 어려워 비어 있습니다.</b> `)+`<button class="btn ghost small" onclick="openGradeEditor()">✏️ 성적 직접 입력</button>`;
+      msg=`✅ OCR 재인식 완료 → 세특·활동 ${eN}건 자동 채움. `+(gN?`성적 ${gN}과목(값 검수 권장). `:`<b>성적표는 인식이 어려워 비어 있습니다.</b> `)+`<button class="btn ghost small" onclick="openGradeEditor()">✏️ 성적 직접 입력</button>`;
     }else{
-      hint.innerHTML='OCR 후에도 생기부 구조를 찾지 못했습니다. <button class="btn ghost small" onclick="openGradeEditor()">✏️ 성적 직접 입력</button>';
+      msg='OCR 후에도 생기부 구조를 찾지 못했습니다. <button class="btn ghost small" onclick="openGradeEditor()">✏️ 성적 직접 입력</button>';
     }
-  }catch(err){hint.textContent='OCR 실패: '+err.message;}
+    hint.innerHTML=msg;showPanel();
+  }catch(err){hint.textContent='OCR 실패: '+err.message;showPanel();}
 }
 /* 파서 결과를 도구 데이터모델(STUDENT/GRADES/ENTRIES)에 반영 후 분석 실행 */
 function applyParsed(r, nm){
