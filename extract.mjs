@@ -38,6 +38,9 @@ async function hlinesOf(page) {
   return out;
 }
 
+/* OCR본은 '·'(가운뎃점) 대신 '•'(글머리 불릿) 등 유사문자를 쓰는 경우가 있어, 파서 정규식이 기대하는 문자로 정규화 */
+const normOcr = s => s.replace(/[•∙‧⋅]/g, '·');
+
 /* 같은 줄로 묶을 Y 허용오차(폰트 높이 대비). 표 셀이 여러 줄이면 값 조정 */
 const Y_TOL = 3;
 
@@ -45,7 +48,7 @@ function reconstructLines(items) {
   // items: {str, transform:[a,b,c,d,x,y], width, height}
   const toks = items
     .filter(it => it.str !== '')
-    .map(it => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width, h: it.height }));
+    .map(it => ({ s: normOcr(it.str), x: it.transform[4], y: it.transform[5], w: it.width, h: it.height }));
   // Y로 클러스터링(위→아래). y가 클수록 위쪽이므로 내림차순
   toks.sort((a, b) => b.y - a.y || a.x - b.x);
   const lines = [];
@@ -79,7 +82,7 @@ function reconstructLines(items) {
 function tokensOf(items) {
   return items
     .filter(it => it.str !== '')
-    .map(it => ({ s: it.str, x: +it.transform[4].toFixed(1), y: +it.transform[5].toFixed(1), w: +it.width.toFixed(1), h: +it.height.toFixed(1) }));
+    .map(it => ({ s: normOcr(it.str), x: +it.transform[4].toFixed(1), y: +it.transform[5].toFixed(1), w: +it.width.toFixed(1), h: +it.height.toFixed(1) }));
 }
 
 /* PDF 경로 → rich 배열([{lines, tokens, hlines}]). 브라우저 추출기와 동일 로직 */

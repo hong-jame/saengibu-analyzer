@@ -518,7 +518,8 @@ function parseAwards(lines) {
 function parseCreative(rich, lines) {
   const startPage = rich.findIndex(pg => pg.lines.some(l => /^\d+\.\s*창의적\s*체험활동상황/.test(l)));
   // 창체 종료: '봉 사 활 동 실 적' 나오는 페이지/그 지점
-  const areaLabel = /^(자율·자치활동|자율활동|동아리활동|진로활동)$/;
+  // OCR본은 "자치 활동"처럼 단어 중간에 공백을 넣는 경우가 있어 문자 사이 공백을 허용
+  const areaLabel = /^(자\s*율\s*·\s*자\s*치\s*활\s*동|자\s*율\s*활\s*동|동\s*아\s*리\s*활\s*동|진\s*로\s*활\s*동)$/;
   const acts = { autonomy: [], club: [], career: [], volunteer: [], hope: {} };
   if (startPage < 0) return acts; // 창체 섹션 없음(스캔본·타 양식 등) — 빈 결과로 안전 반환
   const areaKey = { '자율·자치활동': 'autonomy', 자율활동: 'autonomy', 동아리활동: 'club', 진로활동: 'career' };
@@ -526,16 +527,34 @@ function parseCreative(rich, lines) {
   const isNew = rich.some(pg => pg.lines.some(l => /자율·자치활동|학교폭력\s*조치상황/.test(l)));
   const hoursX = isNew ? [140, 190] : [95, 165];
 
+  // OCR본은 "자율·자치활동" 라벨이 "자율"+"자치활동"처럼 별개 토큰으로 쪼개지는 경우가 있어,
+  // 같은 줄(Y 근접) 토큰을 왼쪽부터 이어붙여 보며 라벨 전체와 일치하는지 확인(정상 PDF는 첫 토큰에서 바로 일치).
+  const findAreaLabelToks = pgTokens => {
+    const byY = []; pgTokens.forEach(t => { const g = byY.find(r => Math.abs(r.y - t.y) <= 3); if (g) g.toks.push(t); else byY.push({ y: t.y, toks: [t] }); });
+    const out = [];
+    byY.forEach(row => {
+      const toks = row.toks.slice().sort((a, b) => a.x - b.x);
+      for (let i = 0; i < toks.length; i++) {
+        let acc = '', prevEnd = null, j = i;
+        for (; j < toks.length && j < i + 5; j++) {
+          if (prevEnd != null && toks[j].x - prevEnd > 20) break; // 인접(작은 간격)까지만 병합
+          acc += toks[j].s; prevEnd = toks[j].x + toks[j].w;
+          if (areaLabel.test(acc.replace(/\s+/g, ''))) { out.push({ s: acc, x: toks[i].x, y: toks[i].y }); break; }
+        }
+      }
+    });
+    return out;
+  };
   // (1) 영역 라벨 → (year, area, hours) : 읽기순(페이지→Y내림) + 순서규칙으로 연도 산정
   const labelSeq = [];
   for (let pi = startPage; pi < rich.length; pi++) {
     const pg = rich[pi];
     if (pg.lines.some(l => /봉\s*사\s*활\s*동\s*실\s*적/.test(l)) && pi > startPage + 1) { /* 마지막 페이지도 포함해 라벨 수집 */ }
-    const labs = pg.tokens.filter(t => areaLabel.test(t.s)).sort((a, b) => b.y - a.y);
+    const labs = findAreaLabelToks(pg.tokens).sort((a, b) => b.y - a.y);
     labs.forEach(t => {
       // 같은 y의 중간열 숫자 = 시간(양식별 열 위치)
       const time = pg.tokens.find(n => n.x > hoursX[0] && n.x < hoursX[1] && /^\d{1,3}$/.test(n.s) && Math.abs(n.y - t.y) < 4);
-      labelSeq.push({ page: pi, area: t.s, y: t.y, hours: time ? +time.s : null });
+      labelSeq.push({ page: pi, area: t.s.replace(/\s+/g, ''), y: t.y, hours: time ? +time.s : null });
     });
     if (pg.lines.some(l => /봉\s*사\s*활\s*동\s*실\s*적/.test(l))) break;
   }
@@ -556,6 +575,9 @@ function parseCreative(rich, lines) {
 
   // (3) 특기사항 내용: 표 괘선(hlines)으로 셀 밴드를 만들어 (연도,영역) 정확 배정
   const bandTop = (y, borders) => { for (let i = 0; i < borders.length - 1; i++) if (borders[i] > y && y >= borders[i + 1]) return borders[i]; return null; };
+  // OCR본은 괘선(hlines)이 아예 없는 경우가 있음 → 그때는 라벨 Y좌표 자체를 밴드 경계로 사용(페이지 넘어도 직전 라벨 이어받음)
+  const allLabelsOrdered = withYear.slice().sort((a, b) => a.page - b.page || b.y - a.y);
+  const labelBandOf = (pi, y) => { let best = null; for (const L of allLabelsOrdered) { if (L.page < pi || (L.page === pi && L.y >= y - 1)) best = L; else break; } return best; };
   const isHdr = s => /^창\s*의\s*적/.test(s) || /^영역\s*시간/.test(s) || /^학년$/.test(s) || s === '특기사항' || /^\s*$/.test(s);
   const buf = {}; const hopeByYear = {};
   const nearestCareerYear = (pi, y) => (withYear.filter(L => L.area === '진로활동' && L.page === pi).concat(withYear.filter(L => L.area === '진로활동' && L.page !== pi)).sort((a, b) => (a.page === pi ? 0 : 1e5) + Math.abs(a.y - y) - ((b.page === pi ? 0 : 1e5) + Math.abs(b.y - y)))[0]);
@@ -578,8 +600,9 @@ function parseCreative(rich, lines) {
       const sp = /\s$/.test(r.s);                         // trim 전 줄 끝 공백 여부
       let s = r.s.replace(/^특기사항\s*/, '').trim();
       if (isHdr(s) || /^희망분야/.test(s)) continue;
-      const t = bandTop(r.y, borders);
-      const info = t != null ? map[t] : null;
+      let info;
+      if (borders.length) { const t = bandTop(r.y, borders); info = t != null ? map[t] : null; }
+      else { const L = labelBandOf(pi, r.y); info = L ? { area: areaKey[L.area], year: L.year } : null; }
       if (!info) continue;
       const key = info.year + '|' + info.area;
       (buf[key] = buf[key] || []).push({ s, sp });
@@ -636,7 +659,7 @@ function parseSubjects(rich) {
       let l = row.s;
       let m;
       if (/^\d+\.\s*독서활동상황/.test(l)) { done = true; break; }
-      if ((m = l.match(/^\[([1-3])학년\]/))) { grade = +m[1]; mode = 'score'; curDet = null; continue; }
+      if ((m = l.match(/^\[\s*([1-3])\s*학년\s*\]/))) { grade = +m[1]; mode = 'score'; curDet = null; continue; }
       if (/해당\s*학년의\s*자료가\s*없습니다/.test(l)) continue;
       if (detHeader.test(l)) { mode = 'detail'; curDet = null; continue; }
       if (/^<진로\s*선택\s*과목>/.test(l)) { mode = 'score'; continue; }
@@ -666,7 +689,9 @@ function parseSubjects(rich) {
         }
       } else {
         const dm = l.match(/^([가-힣A-ZⅠ-Ⅹ0-9·\s]{2,30}?)\s*[:：]\s*(.+)$/);
-        if (dm && isKnownSubject(dm[1].trim())) { curDet = { grade, subject: dm[1].trim(), text: dm[2].trim(), _sp: row.sp }; details.push(curDet); }
+        // 성적표가 전부 인식 실패(예: OCR 손상)면 subjNames가 비어 있어 세특까지 통째로 유실됨 →
+        // 이 경우에 한해(정상 케이스는 그대로) 과목명 사전확인 없이도 헤더로 인정(정규식의 문자 제한이 이미 산문 오탐을 걸러줌).
+        if (dm && (isKnownSubject(dm[1].trim()) || subjNames.size === 0)) { curDet = { grade, subject: dm[1].trim(), text: dm[2].trim(), _sp: row.sp }; details.push(curDet); }
         else if (curDet) { curDet.text = joinSp(curDet.text, l.trim(), curDet._sp); curDet._sp = row.sp; }
       }
     }
@@ -1622,9 +1647,10 @@ function analyze(r, setName = '생명·과학') {
 
 // ── 브라우저 추출기 ──
 
+const normOcr=s=>s.replace(/[•∙‧⋅]/g,'·');
 function reconstructLines(items){
   const Y_TOL=3;
-  const toks=items.filter(it=>it.str!=='').map(it=>({s:it.str,x:it.transform[4],y:it.transform[5],w:it.width,h:it.height}));
+  const toks=items.filter(it=>it.str!=='').map(it=>({s:normOcr(it.str),x:it.transform[4],y:it.transform[5],w:it.width,h:it.height}));
   toks.sort((a,b)=>b.y-a.y||a.x-b.x);
   const lines=[]; let cur=null;
   for(const t of toks){ if(!cur||Math.abs(cur.y-t.y)>Y_TOL){cur={y:t.y,toks:[t]};lines.push(cur);} else cur.toks.push(t); }
@@ -1636,7 +1662,7 @@ function reconstructLines(items){
   });
 }
 function tokensOf(items){
-  return items.filter(it=>it.str!=='').map(it=>({s:it.str,x:+it.transform[4].toFixed(1),y:+it.transform[5].toFixed(1),w:+it.width.toFixed(1),h:+it.height.toFixed(1)}));
+  return items.filter(it=>it.str!=='').map(it=>({s:normOcr(it.str),x:+it.transform[4].toFixed(1),y:+it.transform[5].toFixed(1),w:+it.width.toFixed(1),h:+it.height.toFixed(1)}));
 }
 const _mul=(a,b)=>[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];
 const _ap=(m,x,y)=>[m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]];

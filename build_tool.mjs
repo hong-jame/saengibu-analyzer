@@ -30,9 +30,10 @@ const PDFWORKER = escScript(toClassic('pdf.worker.min.mjs', 'pdfjsWorker'));
 
 // 브라우저 추출기(extract.mjs와 동일 로직, pdfjsLib 주입형)
 const EXTRACT_JS = `
+const normOcr=s=>s.replace(/[•∙‧⋅]/g,'·');
 function reconstructLines(items){
   const Y_TOL=3;
-  const toks=items.filter(it=>it.str!=='').map(it=>({s:it.str,x:it.transform[4],y:it.transform[5],w:it.width,h:it.height}));
+  const toks=items.filter(it=>it.str!=='').map(it=>({s:normOcr(it.str),x:it.transform[4],y:it.transform[5],w:it.width,h:it.height}));
   toks.sort((a,b)=>b.y-a.y||a.x-b.x);
   const lines=[]; let cur=null;
   for(const t of toks){ if(!cur||Math.abs(cur.y-t.y)>Y_TOL){cur={y:t.y,toks:[t]};lines.push(cur);} else cur.toks.push(t); }
@@ -44,7 +45,7 @@ function reconstructLines(items){
   });
 }
 function tokensOf(items){
-  return items.filter(it=>it.str!=='').map(it=>({s:it.str,x:+it.transform[4].toFixed(1),y:+it.transform[5].toFixed(1),w:+it.width.toFixed(1),h:+it.height.toFixed(1)}));
+  return items.filter(it=>it.str!=='').map(it=>({s:normOcr(it.str),x:+it.transform[4].toFixed(1),y:+it.transform[5].toFixed(1),w:+it.width.toFixed(1),h:+it.height.toFixed(1)}));
 }
 const _mul=(a,b)=>[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]];
 const _ap=(m,x,y)=>[m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]];
