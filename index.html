@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 
 <style>
   :root{
@@ -643,7 +644,8 @@ function setupDrop(zoneId,inputId){const z=document.getElementById(zoneId),inp=d
   z.addEventListener('drop',e=>{if(e.dataTransfer.files[0]){inp.files=e.dataTransfer.files;inp.dispatchEvent(new Event('change'));}});}
 /* ===== NEIS 생기부(대입전형자료) 파서 : pdf.js 추출 텍스트 → 구조화 ===== */
 function cleanNEIS(raw){
-  let t=(raw||'').replace(/\r/g,'');
+  // OCR본은 가운뎃점을 ㆍ(U+318D)·・(U+30FB) 등 유사문자로 인식하는 경우가 있어, 과목명(공통국어1ㆍ공통국어2:) 분리가 깨짐 → 정규화
+  let t=(raw||'').replace(/\r/g,'').replace(/[ㆍ・･•∙‧⋅]/g,'·');
   const V=[
     ['창의적체험활동상황','창\\s*의\\s*적\\s*체\\s*험\\s*활\\s*동\\s*상\\s*황'],
     ['세부능력및특기사항','세\\s*부\\s*능\\s*력\\s*및\\s*특\\s*기\\s*사\\s*항'],
@@ -652,7 +654,7 @@ function cleanNEIS(raw){
     ['독서활동상황','독\\s*서\\s*활\\s*동\\s*상\\s*황'],
     ['수상경력','수\\s*상\\s*경\\s*력'],
     ['교과학습발달상황','교과학습발달상황'],
-    ['자율활동','자율활동'],['동아리활동','동아리활동'],['봉사활동','봉사활동'],['진로활동','진로활동'],
+    ['자율활동','자율(?:·자치)?활동'],['동아리활동','동아리활동'],['봉사활동','봉사활동'],['진로활동','진로활동'],
   ];
   V.forEach(([rep,pat])=>{t=t.replace(new RegExp(pat,'g'),' @@'+rep+'@@ ');});
   t=t.replace(/[가-힣A-Za-z0-9]*(?:고등학교|중학교|학교)\s*\/\s*\d{4}\.\d{1,2}\.\d{1,2}\s+\d{1,2}:\d{2}\s*\/\s*[\d.*]+\s*\/\s*[가-힣A-Za-z]+/g,' ');
@@ -734,21 +736,57 @@ function parseNEIS(raw){
   const dept=neisDept(flat);
   return {name,no,dept,grades:Object.values(grades),entries};
 }
+let LAST_PDF=null, LAST_FNAME='';
+function fnameKor(file){const fnm=((file&&file.name)||'').replace(/\.[^.]+$/,'').replace(/[\d\-_]+/g,' ').match(/[가-힣]{2,4}/);return fnm?fnm[0]:'';}
 async function handlePdf(file){if(!file)return;if(typeof pdfjsLib==='undefined'){document.getElementById('pdfHint').textContent='PDF 라이브러리 미로딩';return;}
-  document.getElementById('pdfHint').textContent='추출 중…';
-  try{const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:buf}).promise;let out='';
+  const hint=document.getElementById('pdfHint');hint.textContent='추출 중…';
+  try{const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    LAST_PDF=pdf;LAST_FNAME=fnameKor(file);
+    let out='';
     for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p);const c=await pg.getTextContent();out+=c.items.map(it=>it.str).join(' ')+'\n';}
-    if(out.replace(/\s/g,'').length<300){document.getElementById('pdfHint').textContent='텍스트가 거의 없습니다 — 스캔 이미지 PDF는 인식할 수 없습니다.';return;}
+    const ocrBtn=' <button class="btn ghost small" style="margin-left:6px" onclick="runReOcr()">🔍 이미지에서 다시 읽기(OCR)</button>';
+    if(out.replace(/\s/g,'').length<300){hint.innerHTML='텍스트가 거의 없는 스캔 이미지 PDF입니다. 이미지에서 직접 글자를 읽어보세요.'+ocrBtn;return;}
     // NEIS 생기부(대입전형자료) 자동 인식
     if(/교과학습발달상황|세\s*부\s*능\s*력|창\s*의\s*적\s*체\s*험/.test(out)){
       const r=parseNEIS(out);
-      const fnm=(file.name||'').replace(/\.[^.]+$/,'').replace(/[\d\-_]+/g,' ').match(/[가-힣]{2,4}/);
-      applyParsed(r, r.name||(fnm?fnm[0]:''));
-      document.getElementById('pdfHint').textContent=`${pdf.numPages}쪽 · NEIS 생기부 인식 → 자동 채움 완료`;
+      applyParsed(r, r.name||LAST_FNAME);
+      const gN=r.grades.length, eN=r.entries.length;
+      if(gN===0&&eN<3){hint.innerHTML='내장 텍스트를 거의 해석하지 못했습니다(OCR이 손상된 생기부일 수 있음).'+ocrBtn;}
+      else{hint.innerHTML=`${pdf.numPages}쪽 · NEIS 생기부 인식 → 자동 채움(성적 ${gN}과목·활동 ${eN}건)`+(gN===0?ocrBtn:'');}
     }else{
-      document.getElementById('pdfHint').textContent=`${pdf.numPages}쪽 추출 · NEIS 생기부 형식이 아닙니다(수동 입력 필요).`;
+      hint.innerHTML=`${pdf.numPages}쪽 추출 · NEIS 형식이 아니거나 OCR이 손상됐습니다.`+ocrBtn;
     }
   }catch(err){document.getElementById('pdfHint').textContent='추출 실패: '+err.message;}}
+/* 스캔/OCR손상 생기부: pdf.js로 페이지를 이미지로 렌더 → Tesseract로 직접 재인식 → parseNEIS. 브라우저 안에서만 처리, 외부 전송 없음. */
+async function runReOcr(){
+  const hint=document.getElementById('pdfHint');
+  if(!LAST_PDF){hint.textContent='먼저 PDF를 올려주세요.';return;}
+  if(typeof Tesseract==='undefined'){hint.textContent='OCR 라이브러리를 불러오지 못했습니다(최초 실행 시 인터넷 연결이 필요합니다).';return;}
+  hint.textContent='OCR 준비 중… (최초 1회 한글 데이터 다운로드로 조금 걸립니다)';
+  try{
+    const worker=await Tesseract.createWorker('kor+eng');
+    let out='';
+    for(let p=1;p<=LAST_PDF.numPages;p++){
+      hint.textContent=`이미지에서 글자 인식 중… ${p}/${LAST_PDF.numPages}쪽 (표·성적은 정확도가 낮을 수 있음)`;
+      const pg=await LAST_PDF.getPage(p);
+      const vp=pg.getViewport({scale:300/72});
+      const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+      await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      const {data}=await worker.recognize(cv);
+      out+=data.text+'\n';
+      cv.width=cv.height=0;
+    }
+    await worker.terminate();
+    if(/교과학습발달상황|세\s*부\s*능\s*력|창\s*의\s*적\s*체\s*험/.test(out)){
+      const r=parseNEIS(out);
+      applyParsed(r, r.name||LAST_FNAME);
+      const gN=r.grades.length, eN=r.entries.length;
+      hint.innerHTML=`✅ OCR 재인식 완료 → 세특·활동 ${eN}건 자동 채움. `+(gN?`성적 ${gN}과목(값 검수 권장). `:`<b>성적표는 인식이 어려워 비어 있습니다.</b> `)+`<button class="btn ghost small" onclick="openGradeEditor()">✏️ 성적 직접 입력</button>`;
+    }else{
+      hint.innerHTML='OCR 후에도 생기부 구조를 찾지 못했습니다. <button class="btn ghost small" onclick="openGradeEditor()">✏️ 성적 직접 입력</button>';
+    }
+  }catch(err){hint.textContent='OCR 실패: '+err.message;}
+}
 /* 파서 결과를 도구 데이터모델(STUDENT/GRADES/ENTRIES)에 반영 후 분석 실행 */
 function applyParsed(r, nm){
   if(nm){STUDENT.name=nm;document.getElementById('stuName').value=nm;}
