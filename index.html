@@ -744,6 +744,7 @@ async function handlePdf(file){if(!file)return;if(typeof pdfjsLib==='undefined')
     LAST_PDF=pdf;LAST_FNAME=fnameKor(file);
     let out='';
     for(let p=1;p<=pdf.numPages;p++){const pg=await pdf.getPage(p);const c=await pg.getTextContent();out+=c.items.map(it=>it.str).join(' ')+'\n';}
+    // OCR 재인식 버튼은 어떤 경우든 항상 제공(자동파싱이 부분 성공해도 값이 엉터리일 수 있으므로 escape hatch를 항상 노출)
     const ocrBtn=' <button class="btn ghost small" style="margin-left:6px" onclick="runReOcr()">🔍 이미지에서 다시 읽기(OCR)</button>';
     if(out.replace(/\s/g,'').length<300){hint.innerHTML='텍스트가 거의 없는 스캔 이미지 PDF입니다. 이미지에서 직접 글자를 읽어보세요.'+ocrBtn;return;}
     // NEIS 생기부(대입전형자료) 자동 인식
@@ -751,8 +752,10 @@ async function handlePdf(file){if(!file)return;if(typeof pdfjsLib==='undefined')
       const r=parseNEIS(out);
       applyParsed(r, r.name||LAST_FNAME);
       const gN=r.grades.length, eN=r.entries.length;
-      if(gN===0&&eN<3){hint.innerHTML='내장 텍스트를 거의 해석하지 못했습니다(OCR이 손상된 생기부일 수 있음).'+ocrBtn;}
-      else{hint.innerHTML=`${pdf.numPages}쪽 · NEIS 생기부 인식 → 자동 채움(성적 ${gN}과목·활동 ${eN}건)`+(gN===0?ocrBtn:'');}
+      const weak=(gN===0||eN<6);
+      hint.innerHTML=(weak
+        ? `자동 인식 결과가 부족합니다(성적 ${gN}과목·활동 ${eN}건). OCR이 손상된 생기부면 오른쪽 버튼으로 이미지에서 다시 읽어보세요.`
+        : `${pdf.numPages}쪽 · NEIS 생기부 인식 → 자동 채움(성적 ${gN}과목·활동 ${eN}건).`)+ocrBtn;
     }else{
       hint.innerHTML=`${pdf.numPages}쪽 추출 · NEIS 형식이 아니거나 OCR이 손상됐습니다.`+ocrBtn;
     }
